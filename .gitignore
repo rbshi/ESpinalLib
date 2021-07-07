@@ -43,4 +43,5 @@ simWorkspace/
 tmp/
 null
 __pycache__/
+sim_build/
 results.xml

@@ -1,6 +1,6 @@
 // Generator : SpinalHDL v1.5.0    git head : 83a031922866b078c411ec5529e00f1b6e79f8e7
 // Component : Axi4DMAWrite
-// Git hash  : 666dcbba79181659d0c736eb931d19ec1dc17a25
+// Git hash  : 9e6f1a8833f380a932d18e44f1d0b3392b3e0d75
 
 
 `define Axi4DMAWritePhase_binary_sequential_type [1:0]
@@ -243,8 +243,60 @@ module Axi4DMAWrite (
       default : begin
         if(io_axi_b_valid) begin
           io_axi_b_ready = 1'b1;
-        end else begin
-          io_axi_b_ready = 1'b0;
+        end
+      end
+    endcase
+  end
+
+  always @(*) begin
+    io_ap_idle = 1'b1;
+    case(phase)
+      `Axi4DMAWritePhase_binary_sequential_IDLE : begin
+        if(io_ap_start) begin
+          io_ap_idle = 1'b0;
+        end
+      end
+      `Axi4DMAWritePhase_binary_sequential_SETUP : begin
+        io_ap_idle = 1'b0;
+      end
+      `Axi4DMAWritePhase_binary_sequential_WRITE : begin
+        io_ap_idle = 1'b0;
+      end
+      default : begin
+        io_ap_idle = 1'b0;
+      end
+    endcase
+  end
+
+  always @(*) begin
+    io_ap_ready = 1'b0;
+    case(phase)
+      `Axi4DMAWritePhase_binary_sequential_IDLE : begin
+      end
+      `Axi4DMAWritePhase_binary_sequential_SETUP : begin
+      end
+      `Axi4DMAWritePhase_binary_sequential_WRITE : begin
+      end
+      default : begin
+        if(io_axi_b_valid) begin
+          io_ap_ready = 1'b1;
+        end
+      end
+    endcase
+  end
+
+  always @(*) begin
+    io_ap_done = 1'b0;
+    case(phase)
+      `Axi4DMAWritePhase_binary_sequential_IDLE : begin
+      end
+      `Axi4DMAWritePhase_binary_sequential_SETUP : begin
+      end
+      `Axi4DMAWritePhase_binary_sequential_WRITE : begin
+      end
+      default : begin
+        if(io_axi_b_valid) begin
+          io_ap_done = 1'b1;
         end
       end
     endcase
@@ -290,22 +342,12 @@ module Axi4DMAWrite (
 
   always @(posedge clk) begin
     if(reset) begin
-      io_ap_ready <= 1'b0;
-      io_ap_done <= 1'b0;
-      io_ap_idle <= 1'b1;
       phase <= `Axi4DMAWritePhase_binary_sequential_IDLE;
     end else begin
-      io_ap_idle <= 1'b1;
-      io_ap_ready <= 1'b0;
-      io_ap_done <= 1'b0;
       case(phase)
         `Axi4DMAWritePhase_binary_sequential_IDLE : begin
-          io_ap_ready <= 1'b0;
-          io_ap_done <= 1'b0;
-          io_ap_idle <= 1'b1;
           if(io_ap_start) begin
             phase <= `Axi4DMAWritePhase_binary_sequential_SETUP;
-            io_ap_idle <= 1'b0;
           end
         end
         `Axi4DMAWritePhase_binary_sequential_SETUP : begin
@@ -316,9 +358,6 @@ module Axi4DMAWrite (
         end
         default : begin
           if(io_axi_b_valid) begin
-            io_ap_idle <= 1'b1;
-            io_ap_ready <= 1'b1;
-            io_ap_done <= 1'b1;
             phase <= `Axi4DMAWritePhase_binary_sequential_IDLE;
           end
         end

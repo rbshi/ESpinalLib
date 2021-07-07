@@ -8,6 +8,9 @@ import spinal.core.{UInt, _}
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 
+import scala.language.postfixOps
+
+
 /**
  * State of the state machine of the wrapper
  */
@@ -37,6 +40,7 @@ object Axi4DMAWrite {
 }
 
 
+
 /**
  * Issue Axi4 write transactions in strode memory addresses with burst
  */
@@ -47,12 +51,13 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
   val axiConfig = Axi4DMAWrite.getConfigs(addressAxiWidth, dataWidth)
 
   val io = new Bundle {
+    // axi write interface
     val axi = master(Axi4WriteOnly(axiConfig))
+
+    // control signal (traslated from AXI-lite)
     val start_addr = in UInt (axiConfig.addressWidth bits)
-    val ap_start = in Bool()
-    val ap_ready = out(Reg(Bool()) init(false))
-    val ap_done = out(Reg(Bool()) init(false))
-    val ap_idle = out(Reg(Bool()) init(true))
+
+    val ap = ApIO()
   }
 
   val phase = RegInit(IDLE)
@@ -73,11 +78,8 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
   io.axi.w.last := False
   io.axi.b.ready := True
 
+  io.ap.setDefault()
 
-
-  io.ap_idle := True
-  io.ap_ready := False
-  io.ap_done := False
 
   /**
    * Main state machine
@@ -86,21 +88,24 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
 
     switch(phase) {
       is(IDLE) {
-        io.ap_ready := False
-        io.ap_done := False
-        io.ap_idle := True
-        when(io.ap_start) {
+
+        when(io.ap.reqStart()) {
           phase := SETUP
-          io.ap_idle := False
+          io.ap.setIdle(False)
         }
       }
 
       is(SETUP) {
+        io.ap.setIdle(False)
+
         io.axi.aw.addr := io.start_addr
         phase := WRITE
       }
 
       is(WRITE) {
+
+        io.ap.setIdle(False)
+
         // axi.aw
         io.axi.aw.valid := True
         when(io.axi.aw.ready) {
@@ -116,18 +121,17 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
       }
 
       is(RESPONSE) {
-        when(io.axi.b.valid) {
-          io.ap_idle := True
-          io.ap_ready := True
-          io.ap_done := True
+        io.ap.setIdle(False)
 
+        when(io.axi.b.valid) {
+          io.ap.setReady(True)
+          io.ap.setDone(True)
           io.axi.b.ready := True
           phase := IDLE
-        } otherwise {
-          io.axi.b.ready := False
         }
       }
     }
+
   }
 
 }
