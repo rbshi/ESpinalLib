@@ -42,3 +42,5 @@ bin/
 simWorkspace/
 tmp/
 null
+__pycache__/
+results.xml
