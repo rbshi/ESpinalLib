@@ -134,13 +134,17 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
         io.ap.setIdle(False)
 
         // axi.aw
-        when(aw.valid && aw.ready) {
+        when(aw.valid && io.axi.aw.ready && ~(numBurstA === 0)) {
           numBurstA := numBurstA - 1
           aw.addr := aw.addr + ((io.stride * (io.len_burst + 1)) << io.axi.aw.size)
         }
 
-        when(aw.ready && aw.valid && numBurstA === 0){
-          aw.valid := False
+        when(numBurstA === 0){
+          when(io.axi.aw.ready && aw.valid){
+            aw.valid := False
+          }otherwise{
+            aw.valid := aw.valid
+          }
         }otherwise{
           aw.valid := True
         }
@@ -149,7 +153,7 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
         w.valid := True
         w.data := B(widthOf(io.axi.w.data) bits, default -> true)
 
-        when(w.valid && w.ready) {
+        when(w.valid && io.axi.w.ready) {
           when(lenBurst === 0) {
             lenBurst := io.len_burst
             numBurst := numBurst - 1
@@ -173,8 +177,9 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
         io.ap.setIdle(False)
         io.ap.setReady(True)
         io.ap.setDone(True)
-        io.axi.b.ready := True
-        phase := IDLE
+        when(io.axi.b.valid) {
+          phase := IDLE
+        }
       }
     }
 

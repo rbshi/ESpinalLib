@@ -27,7 +27,7 @@ class TB(object):
         cocotb.fork(Clock(dut.clk, 10, units="ns").start())
 
         # AXI interface
-        self.axi_ram = AxiRamWrite(AxiWriteBus.from_prefix(dut, "io_axi"), dut.clk, dut.reset, size=16384)
+        self.axi_ram = AxiRamWrite(AxiWriteBus.from_prefix(dut, "io_axi"), dut.clk, dut.reset, size=2**16)
 
 
 
@@ -54,8 +54,8 @@ async def run_test_write(dut, data_in=None, idle_inserter=None, backpressure_ins
 
     dut.io_start_addr.setimmediatevalue(0)
     dut.io_len_burst.setimmediatevalue(2)
-    dut.io_num_burst.setimmediatevalue(1)
-    dut.io_stride.setimmediatevalue(3)
+    dut.io_num_burst.setimmediatevalue(9)
+    dut.io_stride.setimmediatevalue(2)
 
     dut.io_ap_start.setimmediatevalue(1)
     await RisingEdge(dut.clk)
