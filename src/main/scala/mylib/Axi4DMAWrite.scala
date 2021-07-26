@@ -57,8 +57,9 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
     // control signal (traslated from AXI-lite)
     val start_addr = in UInt (axiConfig.addressWidth bits)
     val len_burst = in UInt (widthOf(axi.aw.len) bits) // unit: beats in a burst FIXME: width
-    val num_burst = in UInt (8 bits)
+    val num_burst = in UInt (32 bits)
     val stride = in UInt (8 bits) // unit: burst
+    val cnt_clk = out UInt (32 bits)
 
     // standard Xilinx accelerator control signals
     val ap = ApIO()
@@ -81,6 +82,8 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
   val w = Reg(cloneOf(io.axi.w))
   val b = Reg(cloneOf(io.axi.b))
 
+  val r_cnt_clk = Reg(cloneOf(io.cnt_clk))
+
   // init axi control registers
   aw.valid init(False)
   aw.ready init(False)
@@ -88,6 +91,8 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
   w.valid init(False)
   w.ready init(False)
   w.data init(0)
+
+  r_cnt_clk init(0)
 
 
   io.axi.aw.setBurstINCR()
@@ -107,6 +112,8 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
   aw.ready := io.axi.aw.ready
   w.ready := io.axi.w.ready
 
+  io.cnt_clk := r_cnt_clk
+
   /**
    * Main state machine
    */
@@ -123,31 +130,34 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
       is(SETUP) {
         io.ap.setIdle(False)
         aw.addr := io.start_addr
+        aw.valid := True
+
         lenBurst := io.len_burst
         numBurst := io.num_burst
         numBurstA := io.num_burst
         phase := WRITE
+
+        r_cnt_clk := 0 // reset
       }
 
       is(WRITE) {
 
+        r_cnt_clk := r_cnt_clk + 1
+
         io.ap.setIdle(False)
 
         // axi.aw
-        when(aw.valid && io.axi.aw.ready && ~(numBurstA === 0)) {
-          numBurstA := numBurstA - 1
-          aw.addr := aw.addr + ((io.stride * (io.len_burst + 1)) << io.axi.aw.size)
-        }
-
-        when(numBurstA === 0){
-          when(io.axi.aw.ready && aw.valid){
-            aw.valid := False
+        when(aw.valid && io.axi.aw.ready){
+          when(~(numBurstA === 0)){
+            numBurstA := numBurstA - 1
+            aw.addr := aw.addr + ((io.stride * (io.len_burst + 1)) << io.axi.aw.size)
           }otherwise{
-            aw.valid := aw.valid
+            aw.valid := False
           }
         }otherwise{
-          aw.valid := True
+          aw.valid := aw.valid
         }
+
 
         // axi.w
         w.valid := True
@@ -166,7 +176,7 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
           io.axi.w.last := True
         }
 
-        when(numBurst === 0 && lenBurst === 0 && io.axi.w.ready) {
+        when(numBurstA === 0 && numBurst === 0 && lenBurst === 0 && io.axi.w.ready) {
           w.valid := False
           phase := RESPONSE
         }
@@ -189,6 +199,6 @@ case class Axi4DMAWrite(addressAxiWidth: Int, dataWidth: Int) extends Component 
 
 object Axi4DMAWriteMain {
   def main(args: Array[String]) {
-    SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC), targetDirectory = "rtl").generateVerilog(new Axi4DMAWrite(32, 512))
+    SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC), targetDirectory = "rtl").generateVerilog(new Axi4DMAWrite(64, 512))
   }
 }
