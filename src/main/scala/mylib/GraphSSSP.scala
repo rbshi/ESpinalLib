@@ -31,7 +31,7 @@ object GraphSSSP{
   object PhaseReadResp extends SpinalEnum{
     val PTR, SRCDATA, ADJ, DST = newElement
   }
-  
+
   object PhaseProcess extends SpinalEnum{
     val PROCESS, WRDST = newElement
   }
@@ -88,42 +88,50 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
   val axiRdAddrPush = new Stream(axiConfig.addressType)
   val axiRdAddrPop = axiRdAddrPush.queue(size = 16)
+  axiRdAddrPush.valid := False
+  axiRdAddrPush.payload := 0
 
-  val axiWrAddrPush = new Stream(axiConfig.addressType)
-  val axiWrAddrPop = axiWrAddrPush.queue(size = 16)
 
-  io.axi.readCmd.size := log2Up(axiConfig.dataWidth / 8) // FIXME: remove later, Vitis has default value.
-  io.axi.readCmd.id := 0
-  io.axi.readCmd.len := 0
-  io.axi.readCmd.setBurstINCR()
-
-  io.axi.readCmd.addr := axiRdAddrPop.payload
-  io.axi.readCmd.valid := axiRdAddrPop.valid
-  axiRdAddrPop.ready := io.axi.readCmd.ready
-  io.axi.readRsp.ready := True // keep high
-
-  io.axi.writeCmd.size := log2Up(axiConfig.dataWidth / 8)
-  io.axi.writeCmd.id := 0
-  io.axi.writeCmd.len := 0
-  io.axi.writeCmd.setBurstINCR()
-
-  io.axi.writeCmd.addr := axiWrAddrPop.payload
-  io.axi.writeCmd.valid := axiWrAddrPop.valid
-  axiWrAddrPop.ready := io.axi.writeCmd.ready
-
+//  val axiWrAddrPush = new Stream(axiConfig.addressType)
+//  val axiWrAddrPop = axiWrAddrPush.queue(size = 16)
+//  axiWrAddrPush.valid := False
+//  axiWrAddrPush.payload := 0
 
   val nodeSrcIdxPush = new Stream(graphConfig.nodeIdxType)
   val (nodeSrcIdxPop, occuNodeSrcIdxPop) = nodeSrcIdxPush.queueWithOccupancy(size = 1024)
+  nodeSrcIdxPush.valid := False
+  nodeSrcIdxPush.payload := 0
+  nodeSrcIdxPop.ready := False
+  val rOccuNodeSrcIdxPop = RegNext(occuNodeSrcIdxPop)
+
+
 
   val nodeDstDataPush = new Stream(graphConfig.nodeDataType)
-  val nodeDstDataPop = nodeDstDataPush.queue(size = 1024)  
+  val nodeDstDataPop = nodeDstDataPush.queue(size = 1024)
+  nodeDstDataPush.valid := False
+  nodeDstDataPush.payload := 0
+  nodeDstDataPop.ready := False
+
 
   val nodeDstIdxLanePush = new Stream(axiConfig.dataType)
   val (nodeDstIdxLanePop, occuNodeDstIdxLanePop) = nodeDstIdxLanePush.queueWithOccupancy(size = 1024)
-  
+  nodeDstIdxLanePush.valid := False
+  nodeDstIdxLanePush.payload := 0
+  nodeDstIdxLanePop.ready := False
+  val rOccuNodeDstIdxLanePop = RegNext(occuNodeDstIdxLanePop)
+
+
   val nodeDstIdxPush2, nodeDstIdxPush3 = new Stream(graphConfig.nodeIdxType)
   val nodeDstIdxPop2 = nodeDstIdxPush2.queue(size = 1024)
   val (nodeDstIdxPop3, occuNodeDstIdxPop3) = nodeDstIdxPush3.queueWithOccupancy(size = 1024)
+  val rOccuNodeDstIdxPop3 = RegNext(occuNodeDstIdxPop3)
+
+  nodeDstIdxPush2.valid := False
+  nodeDstIdxPush2.payload := 0
+  nodeDstIdxPop2.ready := False
+  nodeDstIdxPush3.valid := False
+  nodeDstIdxPush3.payload := 0
+  nodeDstIdxPop3.ready := False
 
 
   io.ap.setDefault()
@@ -154,7 +162,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
   val rNodeDataSel = Reg(UInt(log2Up(numNodeDataPerLane) bits)) init (0)
   val rAxiRdAddr = Reg(UInt(axiConfig.addressWidth bits)) init (0)
 
-  val rLockReadPtr = Reg(Bool())
+
 
   val rNodeSrcIdx = Reg(graphConfig.nodeIdxType) init (0)
   val rNodeSrcData = Reg(graphConfig.nodeDataType) init (0)
@@ -163,6 +171,42 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
   val rAxiAw = Reg(cloneOf(io.axi.writeCmd))
   val rAxiW = Reg(cloneOf(io.axi.writeData))
+  val rLockAxiAw, rLockAxiW = Reg(Bool())
+
+  val rLockReadPtr = Reg(Bool())
+
+
+
+
+  io.axi.readCmd.size := log2Up(axiConfig.dataWidth / 8) // FIXME: remove later, Vitis has default value.
+  io.axi.readCmd.id := 0
+  io.axi.readCmd.len := 0
+  io.axi.readCmd.setBurstINCR()
+
+  io.axi.readCmd.addr := axiRdAddrPop.payload
+  io.axi.readCmd.valid := axiRdAddrPop.valid
+  axiRdAddrPop.ready := io.axi.readCmd.ready
+  io.axi.readRsp.ready := True // keep high
+
+  io.axi.writeCmd.size := log2Up(axiConfig.dataWidth / 8)
+  io.axi.writeCmd.id := 0
+  io.axi.writeCmd.len := 0
+  io.axi.writeCmd.setBurstINCR()
+
+  io.axi.writeCmd.addr := rAxiAw.addr
+  io.axi.writeCmd.valid := rAxiAw.valid
+  rAxiAw.ready := io.axi.writeCmd.ready
+
+  io.axi.writeData.data := rAxiW.data
+  io.axi.writeData.valid := rAxiW.valid
+  io.axi.writeData.strb := rAxiW.strb
+  io.axi.writeData.last := True
+  io.axi.writeRsp.ready := True
+
+
+
+
+
 
   /**
    * Main state machine
@@ -209,8 +253,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
     val sm_readcmd = new Area {
       switch(phase_readcmd) {
         is(PhaseReadCmd.GETNODE) {
-          when(~(occuNodeSrcIdxPop === 0)) {
-
+          when(~(rOccuNodeSrcIdxPop === 0)) {
             nodeSrcIdxPop.ready := True // pop a node
             // for selecting the proper ptr data from burst width
             rNodePtrSel := nodeSrcIdxPop.payload(log2Up(numNodePtrPerLane) - 1 downto 0)
@@ -221,6 +264,8 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
             phase_readcmd := PhaseReadCmd.PTR
           }
         }
+
+
 
         is(PhaseReadCmd.PTR) {
           axiRdAddrPush.payload := rAxiRdAddr
@@ -258,7 +303,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
         is(PhaseReadCmd.ADJ) {
           when(~(rNodeAdjBurstCnt1 === 0)) {
-            axiRdAddrPush.payload := rNodeAdjAddr
+            axiRdAddrPush.payload := rNodeAdjAddr.resized
             axiRdAddrPush.valid := True
           }otherwise{
             // w/o adj node
@@ -272,8 +317,8 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
         }
 
         is(PhaseReadCmd.DST_LANE) {
-          when(~(occuNodeDstIdxLanePop === 0)) {
-            rNodeDstIdxLane := nodeDstIdxLanePop.payload
+          when(~(rOccuNodeDstIdxLanePop === 0)) {
+            rNodeDstIdxLane := nodeDstIdxLanePop.payload.asUInt
             nodeDstIdxLanePop.ready := True
           }
           when(nodeDstIdxLanePop.fire) {
@@ -288,13 +333,14 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
           axiRdAddrPush.valid := True
 
           when(axiRdAddrPush.fire) {
-            when(~(rNodeAdjLenCnt1 === (NodeAdjLen-1))){
+            when(~(rNodeAdjLenCnt1 === (NodeAdjLen -1))){
               rNodeAdjLenCnt1 := rNodeAdjLenCnt1 + 1
               nodeDstIdxPush2.valid := True // for selecting the dst data from lane
               when(rNodeAdjLenCnt1(log2Up(numNodeIdxPerLane)-1 downto 0) === ((1 << log2Up(numNodeIdxPerLane)) -1)){
                 phase_readcmd := PhaseReadCmd.DST_LANE
               }
             } otherwise{
+              nodeDstIdxPush2.valid := True // for selecting the dst data from lane // FIXME
               phase_readcmd := PhaseReadCmd.GETNODE
             }
           }
@@ -309,7 +355,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
       switch(phase_readresp) {
         is(PhaseReadResp.PTR) {
           when(io.axi.readRsp.fire) {
-            rNodePtr := io.axi.readRsp.data.subdivideIn(graphConfig.nodePrtWidth bits)(rNodePtrSel)
+            rNodePtr := io.axi.readRsp.data.subdivideIn(graphConfig.nodePrtWidth bits)(rNodePtrSel).asUInt
             rLockReadPtr := False
             phase_readresp := PhaseReadResp.SRCDATA
           }
@@ -317,7 +363,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
         is(PhaseReadResp.SRCDATA) {
           when(io.axi.readRsp.fire) {
-            rNodeSrcData := io.axi.readRsp.data.subdivideIn(graphConfig.nodeDataWidth bits)(rNodeDataSel)
+            rNodeSrcData := io.axi.readRsp.data.subdivideIn(graphConfig.nodeDataWidth bits)(rNodeDataSel).asUInt
             phase_readresp := PhaseReadResp.ADJ
           }
         }
@@ -330,7 +376,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
             when(io.axi.readRsp.fire) {
               nodeDstIdxLanePush.valid := True
               rNodeAdjBurstCnt2 := rNodeAdjBurstCnt2 - 1
-            }          
+            }
           } otherwise {
             phase_readresp := PhaseReadResp.DST
           }
@@ -338,7 +384,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
         is(PhaseReadResp.DST) {
           // select proper nodeDataWidth in the lane
-          nodeDstDataPush.payload := io.axi.readRsp.data.subdivideIn(graphConfig.nodeDataWidth bits)(nodeDstIdxPop2.payload)
+          nodeDstDataPush.payload := io.axi.readRsp.data.subdivideIn(graphConfig.nodeDataWidth bits)(nodeDstIdxPop2.payload(log2Up(numNodeDataPerLane)-1 downto 0)).asUInt
 
           nodeDstIdxPush3.payload := nodeDstIdxPop2.payload
 
@@ -359,37 +405,46 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
     }
 
 
-    
+
     val sm_process = new Area {
       switch(phase_process) {
         is(PhaseProcess.PROCESS){
-          when(~(occuNodeDstIdxPop3 === 0)){
+          when(~(rOccuNodeDstIdxPop3 === 0)){
             // pop the nodeDstData & nodeDstIdx
             nodeDstDataPop.ready := True
             nodeDstIdxPop3.ready := True
 
             rAxiAw.addr := io.addr_data + (nodeDstIdxPop3.payload << log2Up(graphConfig.nodeDataWidth / 8)).resized // check the the unaligned address is supported
-
-            rAxiW.data := ((nodeDstDataPop.payload << nodeDstIdxPop3.payload) << log2Up(graphConfig.nodeDataWidth)).resized
-            rAxiW.strb := ((U((1 << log2Up(graphConfig.nodeDataWidth/8))-1 , graphConfig.nodeDataWidth/8 bits) << nodeDstIdxPop3.payload(log2Up(numNodeDataPerLane)-1 downto 0)) << log2Up(graphConfig.nodeDataWidth / 8)).resized
+            rAxiW.strb := ((U((1 << log2Up(graphConfig.nodeDataWidth/8))-1 , graphConfig.nodeDataWidth/8 bits) << nodeDstIdxPop3.payload(log2Up(numNodeDataPerLane)-1 downto 0)) << log2Up(graphConfig.nodeDataWidth / 8)).asBits.resized
 
             // push to nodeSrcIdx
             nodeSrcIdxPush.payload := nodeDstIdxPop3.payload
 
-            // behavior
+            // behavior (update dstNode)
+            rAxiW.data := (((nodeDstDataPop.payload+1) << nodeDstIdxPop3.payload(log2Up(numNodeDataPerLane)-1 downto 0)) << log2Up(graphConfig.nodeDataWidth)).asBits.resized
             when((rNodeSrcData + 1) < nodeDstDataPop.payload){
               rAxiAw.valid := True
               rAxiW.valid := True
 
-              nodeSrcIdxPush.valid := True
+              rLockAxiAw := True
+              rLockAxiW := True
 
+              nodeSrcIdxPush.valid := True
               phase_process := PhaseProcess.WRDST
             }
           }
         }
 
         is(PhaseProcess.WRDST) {
-          when(io.axi.writeCmd.fire){
+          when(io.axi.writeCmd.fire) {
+            rAxiAw.valid := False
+            rLockAxiAw := False
+          }
+          when(io.axi.writeData.fire) {
+            rAxiW.valid := False
+            rLockAxiW := False
+          }
+          when(~rLockAxiAw && ~rLockAxiW){
             phase_process := PhaseProcess.PROCESS
           }
         }

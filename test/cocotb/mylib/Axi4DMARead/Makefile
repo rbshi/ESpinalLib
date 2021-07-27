@@ -24,3 +24,4 @@ include $(shell cocotb-config --makefiles)/Makefile.sim
 clean::
 	@rm -rf iverilog_dump.v
 	@rm -rf dump.fst $(TOPLEVEL).fst
+

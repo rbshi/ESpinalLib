@@ -58,7 +58,7 @@ case class Axi4DMARead(addressAxiWidth: Int, dataWidth: Int) extends Component {
     val start_addr = in UInt (axiConfig.addressWidth bits)
     val len_burst = in UInt (widthOf(axi.ar.len) bits) // unit: beats in a burst FIXME: width
     val num_burst = in UInt (32 bits)
-    val stride = in UInt (8 bits) // unit: burst
+    val stride = in UInt (32 bits) // unit: burst
     val cnt_clk = out UInt (32 bits)
 
     // standard Xilinx accelerator control signals
