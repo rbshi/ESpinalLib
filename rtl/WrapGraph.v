@@ -34,6 +34,7 @@ module WrapGraph(
 
     input  wire [63:0]   io_addr_ptr,
     input  wire [63:0]   io_addr_data,
+    input  wire [63:0]   io_addr_queue,
     input  wire [31:0]   io_start_node,
     output wire [31:0]   io_cnt_clk,
     input  wire          io_ap_start,
@@ -77,6 +78,7 @@ module WrapGraph(
         io_axi_rlast,
         io_addr_ptr,
         io_addr_data,
+        io_addr_queue,
         io_start_node,
         io_cnt_clk,
         io_ap_start,

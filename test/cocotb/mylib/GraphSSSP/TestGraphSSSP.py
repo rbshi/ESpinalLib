@@ -68,6 +68,7 @@ async def run_test_read(dut, data_in=None, idle_inserter=None, backpressure_inse
 
     dut.io_addr_ptr.setimmediatevalue(0)
     dut.io_addr_data.setimmediatevalue(607104)
+    dut.io_addr_queue.setimmediatevalue(1214208)
     dut.io_start_node.setimmediatevalue(0)
 
     dut.io_ap_start.setimmediatevalue(1)
