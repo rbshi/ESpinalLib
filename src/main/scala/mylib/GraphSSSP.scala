@@ -96,7 +96,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
 
   val nodeDstIdxLanePush = new Stream(axiConfig.dataType)
-  val (nodeDstIdxLanePop, occuNodeDstIdxLanePop) = nodeDstIdxLanePush.queueWithOccupancy(size = 1024)
+  val (nodeDstIdxLanePop, occuNodeDstIdxLanePop) = nodeDstIdxLanePush.queueWithOccupancy(size = 4096)
   nodeDstIdxLanePush.valid := False
   nodeDstIdxLanePush.payload := 0
   nodeDstIdxLanePop.ready := False
@@ -204,6 +204,11 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
   val queueLen = UInt(32 bits)
   queueLen := ((rQueueWrAddr - rQueueRdAddr) >> log2Up(graphConfig.nodeIdxWidth/8)).resized
 
+  val rCntWrIssue = Reg(UInt(32 bits)) init(0)
+  val rCntWrResp = Reg(UInt(32 bits)) init(0)
+  val cntWrRemain = UInt(32 bits)
+  cntWrRemain := rCntWrIssue - rCntWrResp
+
 
   /**
    * Main state machine
@@ -251,7 +256,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
         is(PhaseReadCmd.SRCIDX) {
 
-          when(~(queueLen === 0)) {
+          when(~(queueLen === 0) && (cntWrRemain === 0)) {
             axiRdAddrPush.payload := rQueueRdAddr
             axiRdAddrPush.valid := True
           }
@@ -332,7 +337,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
           axiRdAddrPush.valid := True
 
           when(axiRdAddrPush.fire) {
-            nodeDstIdxPush1.valid := True
+            nodeDstIdxPush1.valid := True  // FIXME: fifo is full?
             when((rNodeAdjLenCnt1 === (rNodeAdjLen -1))){
               phase_readcmd := PhaseReadCmd.SRCIDX
             } otherwise{
@@ -436,7 +441,6 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
     val sm_process = new Area {
 
-
       val rAxiDstDataAddr = Reg(cloneOf(io.axi.writeCmd.addr))
       val rAxiDstDataLane = Reg(cloneOf(io.axi.writeData.data))
       val rAxiDstDataStrb = Reg(cloneOf(io.axi.writeData.strb))
@@ -485,6 +489,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
           }
           when(axiWrDataPush.fire) {
             rLockAxiW := False
+            rCntWrIssue := rCntWrIssue + 1
           }
           when(~rLockAxiAw && ~rLockAxiW){
             rLockAxiAw := True
@@ -508,6 +513,7 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
 
           when(axiWrDataPush.fire) {
             rLockAxiW := False
+            rCntWrIssue := rCntWrIssue + 1
           }
 
           when(~rLockAxiAw && ~rLockAxiW) {
@@ -519,6 +525,13 @@ case class GraphSSSP(addressAxiWidth: Int, dataWidth: Int) extends Component {
           }
         }
 
+      }
+    }
+
+
+    val sm_wrresp = new Area {
+      when(io.axi.writeRsp.fire){
+        rCntWrResp := rCntWrResp + 1
       }
     }
 
