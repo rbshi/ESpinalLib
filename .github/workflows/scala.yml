@@ -19,6 +19,6 @@ jobs:
         java-version: '11'
         distribution: 'adopt'
     - name: Install verilator
-      run: apt-get update && apt-get install verilator -y
+      run: sudo apt-get update && sudo apt-get install verilator -y
     - name: Run tests
       run: sbt test
