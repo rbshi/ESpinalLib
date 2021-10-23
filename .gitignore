@@ -45,3 +45,6 @@ null
 __pycache__/
 sim_build/
 results.xml
+
+# genearted rtl
+rtl/
