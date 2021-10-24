@@ -7,6 +7,14 @@ import scala.language.postfixOps
 import scala.util.Random
 import scala.math._
 
+object HashTableRetCode extends SpinalEnum {
+  val sea_success, sea_fail, ins_success, ins_exist, ins_fail, del_success, del_fail = newElement()
+}
+
+object HashTableOpCode extends SpinalEnum {
+  val sea, ins, del = newElement()
+}
+
 class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:Int) extends Bundle{
     val clk_i = in Bool()
     val rst_i = in Bool()

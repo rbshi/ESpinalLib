@@ -7,6 +7,15 @@ import scala.language.postfixOps
 import scala.util.Random
 import scala.math._
 
+
+object LinkedListRetCode extends SpinalEnum {
+  val ins_success, ins_exist, ins_fail, del_success, del_fail, deq_success, deq_fail = newElement()
+}
+
+object LinkedListOpCode extends SpinalEnum {
+  val ins, del, deq = newElement()
+}
+
 // io
 class LinkedListIO(keyWidth:Int, tableAddrWidth:Int) extends Bundle{
   val clk_i = in Bool()
