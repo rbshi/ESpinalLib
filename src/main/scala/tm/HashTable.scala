@@ -3,56 +3,75 @@ package tm
 import spinal.core.{UInt, _}
 import spinal.core.sim._
 import spinal.lib._
+
 import scala.language.postfixOps
 import scala.util.Random
 import scala.math._
+import util.RenameIO
 
-object HashTableRetCode extends SpinalEnum {
-  val sea_success, sea_fail, ins_success, ins_exist, ins_fail, del_success, del_fail = newElement()
-}
-
-object HashTableOpCode extends SpinalEnum {
+object HashTableOpCode extends SpinalEnum() {
   val sea, ins, del = newElement()
 }
 
+object HashTableRetCode extends SpinalEnum() {
+  type HashTableRetCode = UInt
+  val sea_success, sea_fail, ins_success, ins_exist, ins_fail, del_success, del_fail = newElement()
+}
+
 class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:Int) extends Bundle{
-    val clk_i = in Bool()
-    val rst_i = in Bool()
 
-    val ht_cmd_if = new Bundle{
-      val valid = in Bool()
-      val ready = out Bool()
-      val key = in UInt(keyWidth bits)
-      val value = in UInt(valWidth bits)
-      val opcode = in UInt(2 bits) // opcode: OP_SEARCH, OP_INSERT, OP_DELETE
-    }
+  val clk_i = in Bool()
+  val rst_i = in Bool()
 
-    val ht_res_if = new Bundle{
-      val valid = out Bool()
-      val ready = in Bool()
-      // cmd
-      val key = out UInt(keyWidth bits)
-      val value = out UInt(valWidth bits)
-      val opcode = out UInt(2 bits)
+  val ht_cmd_if = slave Stream(new Bundle{
+    val key = UInt(keyWidth bits)
+    val value = UInt(valWidth bits)
+    val opcode = HashTableOpCode() // opcode: OP_SEARCH, OP_INSERT, OP_DELETE
+  })
 
-      val rescode = out UInt(3 bits) // SEARCH_FOUND, SEARCH_NOT_SUCCESS_NO_ENTRY, INSERT_SUCCESS, INSERT_SUCCESS_SAME_KEY, INSERT_NOT_SUCCESS_TABLE_IS_FULL, DELETE_SUCCESS, DELETE_NOT_SUCCESS_NO_ENTRY
-      val bucket = out UInt(bucketWidth bits)
-      val found_value = out UInt(valWidth bits)
-      val chain_state = out UInt(3 bits) // NO_CHAIN, IN_HEAD, IN_MIDDLE, IN_TAIL, IN_TAIL_NO_MATCH
-    }
-    val ht_clear_ram_run = in Bool() // head table
-    val ht_clear_ram_done = out Bool()
-    val dt_clear_ram_run = in Bool() // data table
-    val dt_clear_ram_done = out Bool()
+  val ht_res_if = master Stream(new Bundle{
+    // cmd
+    val key = UInt(keyWidth bits)
+    val value = UInt(valWidth bits)
+    val opcode = UInt(2 bits)
+
+    val rescode = HashTableRetCode() // SEARCH_FOUND, SEARCH_NOT_SUCCESS_NO_ENTRY, INSERT_SUCCESS, INSERT_SUCCESS_SAME_KEY, INSERT_NOT_SUCCESS_TABLE_IS_FULL, DELETE_SUCCESS, DELETE_NOT_SUCCESS_NO_ENTRY
+    val bucket = UInt(bucketWidth bits)
+    val found_value = UInt(valWidth bits)
+    val chain_state = UInt(3 bits) // NO_CHAIN, IN_HEAD, IN_MIDDLE, IN_TAIL, IN_TAIL_NO_MATCH
+  })
+
+  val ht_clear_ram_run = in Bool() // head table
+  val ht_clear_ram_done = out Bool()
+  val dt_clear_ram_run = in Bool() // data table
+  val dt_clear_ram_done = out Bool()
+
+  // default value for out pin
+  def setDefault() = {
+    ht_cmd_if.valid := False
+    ht_cmd_if.key := 0
+    ht_cmd_if.value := 0
+    ht_cmd_if.opcode := HashTableOpCode.sea
+    ht_res_if.ready := True // FIXME:?
+  }
+
+  def sendCmd(key:UInt, value:UInt, opcode:SpinalEnumElement[HashTableOpCode.type]): Unit ={
+    ht_cmd_if.valid := True
+    ht_cmd_if.key := key
+    ht_cmd_if.value := value
+    ht_cmd_if.opcode := opcode
+  }
+
 }
 
 // parameters of blockbox is in sv package FIXME: MUST be modified manually
-class hash_table_top(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:Int) extends BlackBox{
+class hash_table_top(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:Int) extends BlackBox with RenameIO {
 
   val io = new HashTableIO(keyWidth, valWidth, bucketWidth, tableAddrWidth)
   mapCurrentClockDomain(io.clk_i, io.rst_i)
 
   noIoPrefix()
+  addPrePopTask(renameIO)
 
   addRTLPath("rtl_src/HashTable/hash_table_pkg.sv")
   addRTLPath("rtl_src/HashTable/CRC32_D32.sv")

@@ -13,18 +13,19 @@ class LinkedListTest extends AnyFunSuite {
     val prepCmd = fork {
       // init hash table for sim
       val sizeHT = 128
-      var cmdQueue = scala.collection.mutable.Queue.empty[(Int, Int, Int, Boolean)] // opcode, key, head_ptr, head_val, head_ptr_val
+      var cmdQueue = scala.collection.mutable.Queue.empty[(SpinalEnumElement[LinkedListOpCode.type], Int, Int, Boolean)] // opcode, key, head_ptr, head_val, head_ptr_val
+
       for ( k <- 1 to 10) {
         if (k==1) {
-          cmdQueue += ((0, k, 0, false)) // insert
+          cmdQueue += ((LinkedListOpCode.ins, k, 0, false)) // insert
         } else{
-          cmdQueue += ((0, k, 0, true)) // insert
+          cmdQueue += ((LinkedListOpCode.ins, k, 0, true)) // insert
         }
       }
       sendCmd()
 
       for ( k <- 1 to 10) {
-        cmdQueue += ((2, 0, k-1, true)) // dequeue
+        cmdQueue += ((LinkedListOpCode.deq, 0, k-1, true)) // dequeue
       }
       sendCmd()
 

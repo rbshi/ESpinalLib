@@ -25,26 +25,26 @@ class HashTableTest extends AnyFunSuite {
       }
 
       //
-      var cmdQueue = scala.collection.mutable.Queue.empty[(Int, Int, Int)] // opcode, key, value
+      var cmdQueue = scala.collection.mutable.Queue.empty[(SpinalEnumElement[HashTableOpCode.type], Int, Int)] // opcode, key, value
       for ((k, v) <- simHT) {
-        cmdQueue += ((1, k, v)) // insert
+        cmdQueue += ((HashTableOpCode.ins, k, v)) // insert
       }
       sendCmd()
 
       for ((k, v) <- simHT) {
-        cmdQueue += ((0, k, v)) // search
+        cmdQueue += ((HashTableOpCode.sea, k, v)) // search
       }
       sendCmd()
 
       for ((k, v) <- simHT) {
         if (k % 4 == 0) {
-          cmdQueue += ((2, k, v)) // delete
+          cmdQueue += ((HashTableOpCode.del, k, v)) // delete
         }
       }
       sendCmd()
 
       for ((k, v) <- simHT) {
-        cmdQueue += ((0, k, v)) // search, k%16==0 should not exist
+        cmdQueue += ((HashTableOpCode.sea, k, v)) // search, k%16==0 should not exist
       }
       sendCmd()
 
