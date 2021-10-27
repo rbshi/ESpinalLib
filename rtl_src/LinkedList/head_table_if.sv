@@ -6,11 +6,11 @@
 
 import linked_list::*;
 
-interface head_table_if (
+interface ll_head_table_if (
   input clk
 );
 
-logic [HEAD_PTR_WIDTH-1:0] wr_data_ptr;
+logic [LL_HEAD_PTR_WIDTH-1:0] wr_data_ptr;
 logic                      wr_data_ptr_val;
 logic                      wr_en;
 

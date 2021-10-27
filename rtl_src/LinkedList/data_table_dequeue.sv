@@ -6,7 +6,7 @@
 // Delete algo:
 // 
 //   if( no valid head_ptr )
-//     DEQUEUE_NOT_SUCCESS_NO_ENTRY
+//     LL_DEQUEUE_NOT_SUCCESS_NO_ENTRY
 //   else
 //     begin
 //       // update head ptr in head_table 
@@ -14,41 +14,41 @@
 //         head_ptr = NULL
 //       else
 //         head_ptr = next_ptr
-//     DEQUEUE_SUCCESS
+//     LL_DEQUEUE_SUCCESS
 //     end  
 
 
 import linked_list::*;
 
-module data_table_dequeue #(
+module ll_data_table_dequeue #(
   parameter RAM_LATENCY = 2,
 
-  parameter A_WIDTH     = TABLE_ADDR_WIDTH
+  parameter A_WIDTH     = LL_TABLE_ADDR_WIDTH
 ) (
   input                       clk_i,
   input                       rst_i,
   
-  input  ht_pdata_t           task_i,
+  input  ll_ht_pdata_t           task_i,
   input                       task_valid_i,
   output                      task_ready_o,
   
   // to data RAM
-  input  ram_data_t           rd_data_i,
+  input  ll_ram_data_t           rd_data_i,
   output logic [A_WIDTH-1:0]  rd_addr_o,
   output logic                rd_en_o,
 
   output logic [A_WIDTH-1:0]  wr_addr_o,
-  output ram_data_t           wr_data_o,
+  output ll_ram_data_t           wr_data_o,
   output logic                wr_en_o,
   
   // to empty pointer storage
   output  [A_WIDTH-1:0]       add_empty_ptr_o,
   output                      add_empty_ptr_en_o,
 
-  head_table_if.master        head_table_if,
+  ll_head_table_if.master        ll_head_table_if,
 
   // output interface with search result
-  output ht_result_t          result_o,
+  output ll_ht_result_t          result_o,
   output logic                result_valid_o,
   input                       result_ready_i
 );
@@ -59,23 +59,23 @@ enum int unsigned {
   NO_VALID_HEAD_PTR_S,
 
   READ_HEAD_S,
-  KEY_MATCH_IN_HEAD_S,
+  LL_KEY_MATCH_LL_IN_HEAD_S,
 
   CLEAR_RAM_AND_PTR_S
 
 } state, next_state, state_d1;
 
-ht_pdata_t              task_locked;
+ll_ht_pdata_t              task_locked;
 logic [A_WIDTH-1:0]     rd_addr;
-ram_data_t              prev_rd_data;
-ram_data_t              prev_prev_rd_data;
+ll_ram_data_t              prev_rd_data;
+ll_ram_data_t              prev_prev_rd_data;
 logic [A_WIDTH-1:0]     prev_rd_addr;
 
 logic                   rd_data_val;
 logic                   rd_data_val_d1;
 logic                   state_first_tick;
 
-rd_data_val_helper #( 
+ll_rd_data_val_helper #( 
   .RAM_LATENCY                          ( RAM_LATENCY  ) 
 ) rd_data_val_helper (
   .clk_i                                ( clk_i        ),
@@ -122,10 +122,10 @@ always_comb
       READ_HEAD_S:
         begin
           if( rd_data_val )
-            next_state = KEY_MATCH_IN_HEAD_S;
+            next_state = LL_KEY_MATCH_LL_IN_HEAD_S;
         end
       
-      KEY_MATCH_IN_HEAD_S:
+      LL_KEY_MATCH_LL_IN_HEAD_S:
         begin
           next_state = CLEAR_RAM_AND_PTR_S; 
         end
@@ -192,7 +192,7 @@ assign rd_addr_o    = rd_addr;
 
 assign wr_en_o      = state_first_tick && ( state == CLEAR_RAM_AND_PTR_S );
 
-ram_data_t rd_data_locked;
+ll_ram_data_t rd_data_locked;
 
 always_ff @( posedge clk_i )
   if( rd_data_val )
@@ -221,9 +221,9 @@ always_comb
   end
 
 // ******* Head Ptr table magic *******
-assign head_table_if.wr_data_ptr      = rd_data_locked.next_ptr;
-assign head_table_if.wr_data_ptr_val  = rd_data_locked.next_ptr_val;
-assign head_table_if.wr_en            = state_first_tick && ( state == KEY_MATCH_IN_HEAD_S );
+assign ll_head_table_if.wr_data_ptr      = rd_data_locked.next_ptr;
+assign ll_head_table_if.wr_data_ptr_val  = rd_data_locked.next_ptr_val;
+assign ll_head_table_if.wr_en            = state_first_tick && ( state == LL_KEY_MATCH_LL_IN_HEAD_S );
 
 // ******* Empty ptr storage ******
 
@@ -233,20 +233,20 @@ assign add_empty_ptr_en_o  = state_first_tick && ( state == CLEAR_RAM_AND_PTR_S 
 // ******* Result calculation *******
 assign result_o.cmd.key     = rd_data_locked.key;
 assign result_o.cmd.opcode  = task_locked.cmd.opcode;
-assign result_o.rescode     = ( state == NO_VALID_HEAD_PTR_S ) ? ( DEQUEUE_NOT_SUCCESS_NO_ENTRY ):
-                                                                         ( DEQUEUE_SUCCESS );
+assign result_o.rescode     = ( state == NO_VALID_HEAD_PTR_S ) ? ( LL_DEQUEUE_NOT_SUCCESS_NO_ENTRY ):
+                                                                         ( LL_DEQUEUE_SUCCESS );
 
-ht_chain_state_t chain_state;
+ll_ht_chain_state_t chain_state;
 
 always_ff @( posedge clk_i or posedge rst_i )
   if( rst_i )
-    chain_state <= NO_CHAIN;
+    chain_state <= LL_NO_CHAIN;
   else
     if( state != next_state )
       begin
         case( next_state )
-          NO_VALID_HEAD_PTR_S     : chain_state <= NO_CHAIN;
-          KEY_MATCH_IN_HEAD_S     : chain_state <= IN_HEAD;
+          NO_VALID_HEAD_PTR_S     : chain_state <= LL_NO_CHAIN;
+          LL_KEY_MATCH_LL_IN_HEAD_S     : chain_state <= LL_IN_HEAD;
           // no default: just keep old value
         endcase
       end

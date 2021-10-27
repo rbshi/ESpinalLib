@@ -6,11 +6,11 @@
 
 import linked_list::*;
 
-interface ht_res_if( 
+interface ll_ht_res_if( 
   input clk 
 );
 
-ht_result_t                 result;
+ll_ht_result_t                 result;
 logic                       valid;
 logic                       ready;
 

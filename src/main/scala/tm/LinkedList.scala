@@ -48,6 +48,15 @@ class LinkedListIO(keyWidth:Int, tableAddrWidth:Int) extends Bundle{
   val clear_ram_run_i = in Bool()
   val clear_ram_done_o = out Bool()
 
+  def setDefault() = {
+    ll_cmd_if.valid := False
+    ll_cmd_if.key := 0
+    ll_cmd_if.opcode := LinkedListOpCode.ins
+    ll_cmd_if.head_ptr := 0
+    ll_cmd_if.head_ptr_val := False
+    ll_res_if.ready := False
+    clear_ram_run_i := False
+  }
 
   def sendCmd(key:UInt, opcode:SpinalEnumElement[LinkedListOpCode.type], head_ptr:UInt, head_ptr_val:Bool): Unit ={
     ll_cmd_if.valid := True
@@ -57,6 +66,18 @@ class LinkedListIO(keyWidth:Int, tableAddrWidth:Int) extends Bundle{
     ll_cmd_if.head_ptr_val := head_ptr_val
   }
 
+  def printCmd() = {
+    if(ll_cmd_if.valid.toBoolean && ll_cmd_if.ready.toBoolean){
+      println("[LL] key:" + ll_cmd_if.key.toInt + "\topcode:" + ll_cmd_if.opcode.toBigInt +
+        "\thead_ptr:" + ll_cmd_if.head_ptr.toBigInt + "\thead_ptr_val:" + ll_cmd_if.head_ptr_val.toBoolean)
+    }
+  }
+
+  def printResp() = {
+    if(ll_res_if.valid.toBoolean && ll_res_if.ready.toBoolean){
+      println("[LL] key:" + ll_res_if.key.toInt + "\topcode:" + ll_res_if.opcode.toBigInt + "\trescode:" + ll_res_if.rescode.toBigInt)
+    }
+  }
 
 }
 

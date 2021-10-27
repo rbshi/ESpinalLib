@@ -70,6 +70,6 @@ class LinkedListTest extends AnyFunSuite {
   }
 
   test("insert_dequeue") {
-    SimConfig.compile(new LinkedListDut(32, 10)).doSim("test", 99)(insert_dequeue)
+    SimConfig.withWave.compile(new LinkedListDut(32, 10)).doSim("test", 99)(insert_dequeue)
   }
 }

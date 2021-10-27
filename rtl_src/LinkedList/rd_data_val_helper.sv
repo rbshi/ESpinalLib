@@ -4,7 +4,7 @@
 // Author        : Ivan Shevchuk (github/johan92)
 //-----------------------------------------------------------------------------
 
-module rd_data_val_helper #( 
+module ll_rd_data_val_helper #( 
   parameter RAM_LATENCY = 2 
 ) (
   input  clk_i,

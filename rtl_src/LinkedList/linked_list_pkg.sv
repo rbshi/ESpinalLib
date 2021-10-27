@@ -6,74 +6,74 @@
 
 package linked_list;
   
-  parameter KEY_WIDTH        = 32;
-  parameter TABLE_ADDR_WIDTH = 10;
-  parameter HEAD_PTR_WIDTH   = TABLE_ADDR_WIDTH;
+  parameter LL_KEY_WIDTH        = 9;
+  parameter LL_TABLE_ADDR_WIDTH = 10;
+  parameter LL_HEAD_PTR_WIDTH   = LL_TABLE_ADDR_WIDTH;
 
-  typedef enum logic [1:0] {
-    OP_INSERT,
-    OP_DELETE,
-    OP_DEQUEUE
-  } ht_opcode_t;
+  typedef enum {
+    LL_OP_INSERT,
+    LL_OP_DELETE,
+    LL_OP_DEQ
+  } ll_ht_opcode_t;
 
-  typedef enum logic [2:0] {
-    INSERT_SUCCESS,
-    INSERT_SUCCESS_SAME_KEY, 
-    INSERT_NOT_SUCCESS_TABLE_IS_FULL,
+  typedef enum {
+    LL_INSERT_SUCCESS,
+    LL_INSERT_SUCCESS_SAME_KEY, 
+    LL_INSERT_NOT_SUCCESS_TABLE_IS_FULL,
 
-    DELETE_SUCCESS,
-    DELETE_NOT_SUCCESS_NO_ENTRY, 
+    LL_DELETE_SUCCESS,
+    LL_DELETE_NOT_SUCCESS_NO_ENTRY, 
 
-    DEQUEUE_SUCCESS,
-    DEQUEUE_NOT_SUCCESS_NO_ENTRY
-  } ht_rescode_t;
+    LL_DEQUEUE_SUCCESS,
+    LL_DEQUEUE_NOT_SUCCESS_NO_ENTRY
+  } ll_ht_rescode_t;
   
-  typedef enum logic [1:0] {
-    READ_NO_HEAD,
-    KEY_MATCH,
-    KEY_NO_MATCH_HAVE_NEXT_PTR,
-    GOT_TAIL
-  } ht_data_table_state_t;
+  typedef enum {
+    LL_READ_NO_HEAD,
+    LL_KEY_MATCH,
+    LL_KEY_NO_MATCH_HAVE_NEXT_PTR,
+    LL_GOT_TAIL
+  } ll_ht_data_table_state_t;
   
-  typedef enum logic [2:0] {
-    NO_CHAIN,
+  typedef enum {
+    LL_NO_CHAIN,
 
-    IN_HEAD,
-    IN_MIDDLE,
-    IN_TAIL,
+    LL_IN_HEAD,
+    LL_IN_MIDDLE,
+    LL_IN_TAIL,
 
-    IN_TAIL_NO_MATCH
-  } ht_chain_state_t;
+    LL_IN_TAIL_NO_MATCH
+  } ll_ht_chain_state_t;
 
   typedef struct packed {
-    logic [HEAD_PTR_WIDTH-1:0] ptr;
+    logic [LL_HEAD_PTR_WIDTH-1:0] ptr;
     logic                      ptr_val;
-  } head_ram_data_t;
+  } ll_head_ll_ram_data_t;
 
   typedef struct packed {
-    logic [KEY_WIDTH-1:0]      key;
-    logic [HEAD_PTR_WIDTH-1:0] next_ptr;
+    logic [LL_KEY_WIDTH-1:0]      key;
+    logic [LL_HEAD_PTR_WIDTH-1:0] next_ptr;
     logic                      next_ptr_val;
-  } ram_data_t; 
+  } ll_ram_data_t; 
   
   typedef struct packed {
-    logic        [KEY_WIDTH-1:0]    key;
-    ht_opcode_t                     opcode;
-  } ht_command_t;
+    logic        [LL_KEY_WIDTH-1:0]    key;
+    ll_ht_opcode_t                     opcode;
+  } ll_ht_command_t;
   
   // pdata - data to pipeline/proccessing
   typedef struct packed {
-    ht_command_t                cmd;
-    logic  [HEAD_PTR_WIDTH-1:0] head_ptr;
+    ll_ht_command_t                cmd;
+    logic  [LL_HEAD_PTR_WIDTH-1:0] head_ptr;
     logic                       head_ptr_val;
-  } ht_pdata_t;
+  } ll_ht_pdata_t;
 
   typedef struct packed {
-    ht_command_t                cmd;
-    ht_rescode_t                rescode;
+    ll_ht_command_t                cmd;
+    ll_ht_rescode_t                rescode;
     
     // only for verification
-    ht_chain_state_t            chain_state;
-  } ht_result_t;
+    ll_ht_chain_state_t            chain_state;
+  } ll_ht_result_t;
 
 endpackage

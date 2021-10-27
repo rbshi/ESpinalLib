@@ -6,22 +6,22 @@
 
 import linked_list::*;
 
-module ht_res_mux #(
+module ll_ht_res_mux #(
   parameter DIR_CNT = 3
 ) (
 
-  ht_res_if.slave      ht_res_in [DIR_CNT-1:0],
-  ht_res_if.master     ht_res_out
+  ll_ht_res_if.slave      ht_res_in [DIR_CNT-1:0],
+  ll_ht_res_if.master     ht_res_out
 
 );
 
 localparam DIR_CNT_WIDTH = $clog2( DIR_CNT );
 
-ht_result_t               result        [DIR_CNT-1:0];
+ll_ht_result_t               result        [DIR_CNT-1:0];
 logic                     result_valid  [DIR_CNT-1:0]; 
 logic                     result_ready  [DIR_CNT-1:0];
 
-ht_result_t               mux_result;
+ll_ht_result_t               mux_result;
 logic                     mux_result_valid; 
 
 logic [DIR_CNT_WIDTH-1:0] sel;

@@ -46,13 +46,14 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
   val dt_clear_ram_run = in Bool() // data table
   val dt_clear_ram_done = out Bool()
 
-  // default value for out pin
   def setDefault() = {
     ht_cmd_if.valid := False
     ht_cmd_if.key := 0
     ht_cmd_if.value := 0
     ht_cmd_if.opcode := HashTableOpCode.sea
-    ht_res_if.ready := True // FIXME:?
+    ht_res_if.ready := False
+    ht_clear_ram_run := False
+    dt_clear_ram_run := False
   }
 
   def sendCmd(key:UInt, value:UInt, opcode:SpinalEnumElement[HashTableOpCode.type]): Unit ={
@@ -61,6 +62,19 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
     ht_cmd_if.value := value
     ht_cmd_if.opcode := opcode
   }
+
+  def printCmd() = {
+    if(ht_cmd_if.valid.toBoolean && ht_cmd_if.ready.toBoolean){
+      println("[HT] key:" + ht_cmd_if.key.toBigInt + "\tvalue:" + ht_cmd_if.value.toBigInt + "\topcode:" + ht_cmd_if.opcode.toBigInt)
+    }
+  }
+
+  def printResp() = {
+    if(ht_res_if.valid.toBoolean && ht_res_if.ready.toBoolean){
+      println("[HT] key:" + ht_res_if.key.toBigInt + "\tvalue:" + ht_res_if.value.toBigInt + "\topcode:" + ht_res_if.opcode.toBigInt + "\trescode:" + ht_res_if.rescode.toBigInt)
+    }
+  }
+
 
 }
 

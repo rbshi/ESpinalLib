@@ -15,19 +15,19 @@
 //  
 //       if( key matched )
 //         just update data in this addr, 
-//         INSERT_SUCCESS_SAME_KEY
+//         LL_INSERT_SUCCESS_SAME_KEY
 //     end
 //  
 //   get new empty addr:
 //     if( no empty addr - table is full )
-//       INSERT_NOT_SUCCESS_TABLE_IS_FULL
+//       LL_INSERT_NOT_SUCCESS_TABLE_IS_FULL
 //     else
 //       if( it was no valid head ptr ) 
 //         begin
 //           update info about head ptr in head table
 //           write data in addr, next_ptr is null
 //  
-//           INSERT_SUCCESS
+//           LL_INSERT_SUCCESS
 //         end
 //       // there was some data in chain, so, just adding at end of chain
 //       else
@@ -35,29 +35,29 @@
 //           write data in addr, next_ptr is null
 //           update ptr in previous chain addr
 //  
-//           INSERT_SUCCESS
+//           LL_INSERT_SUCCESS
 //         end
 
 import linked_list::*;
 
-module data_table_insert #(
+module ll_data_table_insert #(
   parameter RAM_LATENCY = 2,
-  parameter A_WIDTH     = TABLE_ADDR_WIDTH
+  parameter A_WIDTH     = LL_TABLE_ADDR_WIDTH
 ) (
   input                       clk_i,
   input                       rst_i,
   
-  input  ht_pdata_t           task_i,
+  input  ll_ht_pdata_t           task_i,
   input                       task_valid_i,
   output                      task_ready_o,
   
   // to data RAM
-  input  ram_data_t           rd_data_i,
+  input  ll_ram_data_t           rd_data_i,
   output logic [A_WIDTH-1:0]  rd_addr_o,
   output logic                rd_en_o,
 
   output logic [A_WIDTH-1:0]  wr_addr_o,
-  output ram_data_t           wr_data_o,
+  output ll_ram_data_t           wr_data_o,
   output logic                wr_en_o,
   
   // to empty pointer storage
@@ -65,10 +65,10 @@ module data_table_insert #(
   input                       empty_addr_val_i,
   output logic                empty_addr_rd_ack_o,                 
 
-  head_table_if.master        head_table_if,
+  ll_head_table_if.master        ll_head_table_if,
 
   // output interface with search result
-  output ht_result_t          result_o,
+  output ll_ht_result_t          result_o,
   output logic                result_valid_o,
   input                       result_ready_i
 );
@@ -80,7 +80,7 @@ enum int unsigned {
 
   GO_ON_CHAIN_S,
 
-  KEY_MATCH_S,
+  LL_KEY_MATCH_S,
 
   NO_EMPTY_ADDR_S,
 
@@ -94,7 +94,7 @@ enum int unsigned {
 
 logic                   no_empty_addr;
 
-ht_pdata_t              task_locked;
+ll_ht_pdata_t              task_locked;
 logic                   key_match;
 logic                   got_tail;
 logic [A_WIDTH-1:0]     rd_addr;
@@ -103,7 +103,7 @@ logic                   rd_data_val;
 logic                   rd_data_val_d1;
 logic                   state_first_tick;
 
-rd_data_val_helper #( 
+ll_rd_data_val_helper #( 
   .RAM_LATENCY                          ( RAM_LATENCY  ) 
 ) rd_data_val_helper (
   .clk_i                                ( clk_i        ),
@@ -156,7 +156,7 @@ always_comb
           if( rd_data_val )
             begin
               if( key_match )
-                next_state = KEY_MATCH_S;
+                next_state = LL_KEY_MATCH_S;
               else
                 begin
                   // on tail
@@ -173,7 +173,7 @@ always_comb
             end
         end
 
-      KEY_MATCH_S, NO_EMPTY_ADDR_S, NO_HEAD_PTR_WR_DATA_S, ON_TAIL_UPD_NEXT_PTR_S: 
+      LL_KEY_MATCH_S, NO_EMPTY_ADDR_S, NO_HEAD_PTR_WR_DATA_S, ON_TAIL_UPD_NEXT_PTR_S: 
         begin
           if( result_valid_o && result_ready_i )
             begin
@@ -222,12 +222,12 @@ assign rd_en_o      = ( state_first_tick || rd_data_val_d1 ) && ( ( state == REA
                                                                   ( state == GO_ON_CHAIN_S ) );   
 assign rd_addr_o    = rd_addr; 
 
-assign wr_en_o      = state_first_tick && ( ( state == KEY_MATCH_S            ) ||
+assign wr_en_o      = state_first_tick && ( ( state == LL_KEY_MATCH_S            ) ||
                                             ( state == NO_HEAD_PTR_WR_DATA_S  ) || 
                                             ( state == ON_TAIL_WR_DATA_S      ) ||
                                             ( state == ON_TAIL_UPD_NEXT_PTR_S ) ); 
 
-ram_data_t rd_data_locked;
+ll_ram_data_t rd_data_locked;
 
 always_ff @( posedge clk_i )
   if( rd_data_val )
@@ -240,7 +240,7 @@ always_comb
     wr_addr_o = 'x;
 
     case( state )
-      KEY_MATCH_S:
+      LL_KEY_MATCH_S:
         begin
           // just rewriting value
           // wr_data_o.value = task_locked.cmd.value; // no value for linked list
@@ -273,27 +273,27 @@ always_comb
     endcase
   end
 
-assign head_table_if.wr_data_ptr      = empty_addr_i; 
-assign head_table_if.wr_data_ptr_val  = 1'b1;
-assign head_table_if.wr_en            = state_first_tick && ( state == NO_HEAD_PTR_WR_HEAD_PTR_S );
+assign ll_head_table_if.wr_data_ptr      = empty_addr_i; 
+assign ll_head_table_if.wr_data_ptr_val  = 1'b1;
+assign ll_head_table_if.wr_en            = state_first_tick && ( state == NO_HEAD_PTR_WR_HEAD_PTR_S );
 
 
 assign empty_addr_rd_ack_o            = state_first_tick && ( ( state == NO_HEAD_PTR_WR_DATA_S  ) ||
                                                               ( state == ON_TAIL_UPD_NEXT_PTR_S ) );
 
 
-ht_chain_state_t chain_state;
+ll_ht_chain_state_t chain_state;
 
 always_ff @( posedge clk_i or posedge rst_i )
   if( rst_i )
-    chain_state <= NO_CHAIN;
+    chain_state <= LL_NO_CHAIN;
   else
     if( next_state != state )
       begin
         case( next_state )
-          NO_EMPTY_ADDR_S           : chain_state <= NO_CHAIN;
-          NO_HEAD_PTR_WR_HEAD_PTR_S : chain_state <= IN_HEAD;
-          ON_TAIL_WR_DATA_S         : chain_state <= IN_TAIL;
+          NO_EMPTY_ADDR_S           : chain_state <= LL_NO_CHAIN;
+          NO_HEAD_PTR_WR_HEAD_PTR_S : chain_state <= LL_IN_HEAD;
+          ON_TAIL_WR_DATA_S         : chain_state <= LL_IN_TAIL;
           // no default: just keep old value
         endcase
       end
@@ -305,15 +305,15 @@ always_comb
     result_o.chain_state = chain_state;
 
     case( state )
-      KEY_MATCH_S:     result_o.rescode = INSERT_SUCCESS_SAME_KEY;
-      NO_EMPTY_ADDR_S: result_o.rescode = INSERT_NOT_SUCCESS_TABLE_IS_FULL;
-      default:         result_o.rescode = INSERT_SUCCESS;
+      LL_KEY_MATCH_S:     result_o.rescode = LL_INSERT_SUCCESS_SAME_KEY;
+      NO_EMPTY_ADDR_S: result_o.rescode = LL_INSERT_NOT_SUCCESS_TABLE_IS_FULL;
+      default:         result_o.rescode = LL_INSERT_SUCCESS;
     endcase
   end
 
 
 
-assign result_valid_o = ( state == KEY_MATCH_S            ) ||
+assign result_valid_o = ( state == LL_KEY_MATCH_S            ) ||
                         ( state == NO_EMPTY_ADDR_S        ) ||
                         ( state == NO_HEAD_PTR_WR_DATA_S  ) ||
                         ( state == ON_TAIL_UPD_NEXT_PTR_S );

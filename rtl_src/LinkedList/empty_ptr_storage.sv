@@ -4,7 +4,7 @@
 // Author        : Ivan Shevchuk (github/johan92)
 //-----------------------------------------------------------------------------
 
-module empty_ptr_storage #(
+module ll_empty_ptr_storage #(
   parameter A_WIDTH = 8
 )(
 

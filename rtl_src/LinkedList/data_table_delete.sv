@@ -6,7 +6,7 @@
 // Delete algo:
 // 
 //   if( no valid head_ptr )
-//     DELETE_NOT_SUCCESS_NO_ENTRY
+//     LL_DELETE_NOT_SUCCESS_NO_ENTRY
 //   else
 //     if( key matched )
 //       begin
@@ -33,45 +33,45 @@
 //              set in previous chain addr next_ptr is ptr of next data
 //            end
 //   
-//         DELETE_SUCCESS
+//         LL_DELETE_SUCCESS
 //       end
 //     else
 //       begin
-//         DELETE_NOT_SUCCESS_NO_ENTRY
+//         LL_DELETE_NOT_SUCCESS_NO_ENTRY
 //       end
 
 
 import linked_list::*;
 
-module data_table_delete #(
+module ll_data_table_delete #(
   parameter RAM_LATENCY = 2,
 
-  parameter A_WIDTH     = TABLE_ADDR_WIDTH
+  parameter A_WIDTH     = LL_TABLE_ADDR_WIDTH
 ) ( 
   input                       clk_i,
   input                       rst_i,
   
-  input  ht_pdata_t           task_i,
+  input  ll_ht_pdata_t           task_i,
   input                       task_valid_i,
   output                      task_ready_o,
   
   // to data RAM
-  input  ram_data_t           rd_data_i,
+  input  ll_ram_data_t           rd_data_i,
   output logic [A_WIDTH-1:0]  rd_addr_o,
   output logic                rd_en_o,
 
   output logic [A_WIDTH-1:0]  wr_addr_o,
-  output ram_data_t           wr_data_o,
+  output ll_ram_data_t           wr_data_o,
   output logic                wr_en_o,
   
   // to empty pointer storage
   output  [A_WIDTH-1:0]       add_empty_ptr_o,
   output                      add_empty_ptr_en_o,
 
-  head_table_if.master        head_table_if,
+  ll_head_table_if.master        ll_head_table_if,
 
   // output interface with search result
-  output ht_result_t          result_o,
+  output ll_ht_result_t          result_o,
   output logic                result_valid_o,
   input                       result_ready_i
 );
@@ -84,29 +84,29 @@ enum int unsigned {
   READ_HEAD_S,
   GO_ON_CHAIN_S,
 
-  IN_TAIL_WITHOUT_MATCH_S,
+  LL_IN_TAIL_WITHOUT_MATCH_S,
 
-  KEY_MATCH_IN_HEAD_S,
-  KEY_MATCH_IN_MIDDLE_S,
-  KEY_MATCH_IN_TAIL_S,
+  LL_KEY_MATCH_LL_IN_HEAD_S,
+  LL_KEY_MATCH_LL_IN_MIDDLE_S,
+  LL_KEY_MATCH_LL_IN_TAIL_S,
 
   CLEAR_RAM_AND_PTR_S
 
 } state, next_state, state_d1;
 
-ht_pdata_t              task_locked;
+ll_ht_pdata_t              task_locked;
 logic                   key_match;
 logic                   got_tail;
 logic [A_WIDTH-1:0]     rd_addr;
-ram_data_t              prev_rd_data;
-ram_data_t              prev_prev_rd_data;
+ll_ram_data_t              prev_rd_data;
+ll_ram_data_t              prev_prev_rd_data;
 logic [A_WIDTH-1:0]     prev_rd_addr;
 
 logic                   rd_data_val;
 logic                   rd_data_val_d1;
 logic                   state_first_tick;
 
-rd_data_val_helper #( 
+ll_rd_data_val_helper #( 
   .RAM_LATENCY                          ( RAM_LATENCY  ) 
 ) rd_data_val_helper (
   .clk_i                                ( clk_i        ),
@@ -157,27 +157,27 @@ always_comb
               if( key_match )
                 begin
                   if( state == READ_HEAD_S )
-                    next_state = KEY_MATCH_IN_HEAD_S;
+                    next_state = LL_KEY_MATCH_LL_IN_HEAD_S;
                   else
                     if( got_tail )
-                      next_state = KEY_MATCH_IN_TAIL_S;
+                      next_state = LL_KEY_MATCH_LL_IN_TAIL_S;
                     else
-                      next_state = KEY_MATCH_IN_MIDDLE_S;
+                      next_state = LL_KEY_MATCH_LL_IN_MIDDLE_S;
                 end
               else
                 if( got_tail )
-                  next_state = IN_TAIL_WITHOUT_MATCH_S;
+                  next_state = LL_IN_TAIL_WITHOUT_MATCH_S;
                 else
                   next_state = GO_ON_CHAIN_S;
             end
         end
       
-      KEY_MATCH_IN_HEAD_S, KEY_MATCH_IN_MIDDLE_S, KEY_MATCH_IN_TAIL_S:
+      LL_KEY_MATCH_LL_IN_HEAD_S, LL_KEY_MATCH_LL_IN_MIDDLE_S, LL_KEY_MATCH_LL_IN_TAIL_S:
         begin
           next_state = CLEAR_RAM_AND_PTR_S; 
         end
 
-      CLEAR_RAM_AND_PTR_S, NO_VALID_HEAD_PTR_S, IN_TAIL_WITHOUT_MATCH_S:
+      CLEAR_RAM_AND_PTR_S, NO_VALID_HEAD_PTR_S, LL_IN_TAIL_WITHOUT_MATCH_S:
         begin
           // waiting for accepting report 
           if( result_valid_o && result_ready_i )
@@ -247,11 +247,11 @@ assign rd_en_o      = ( state_first_tick || rd_data_val_d1 ) && ( ( state == REA
 
 assign rd_addr_o    = rd_addr; 
 
-assign wr_en_o      = state_first_tick && ( ( state == KEY_MATCH_IN_MIDDLE_S  ) ||
-                                            ( state == KEY_MATCH_IN_TAIL_S    ) || 
+assign wr_en_o      = state_first_tick && ( ( state == LL_KEY_MATCH_LL_IN_MIDDLE_S  ) ||
+                                            ( state == LL_KEY_MATCH_LL_IN_TAIL_S    ) || 
                                             ( state == CLEAR_RAM_AND_PTR_S    ) );
 
-ram_data_t rd_data_locked;
+ll_ram_data_t rd_data_locked;
 
 always_ff @( posedge clk_i )
   if( rd_data_val )
@@ -271,7 +271,7 @@ always_comb
           wr_addr_o = rd_addr;
         end
 
-      KEY_MATCH_IN_MIDDLE_S:
+      LL_KEY_MATCH_LL_IN_MIDDLE_S:
         begin
           wr_data_o.next_ptr     = rd_data_locked.next_ptr;
           wr_data_o.next_ptr_val = rd_data_locked.next_ptr_val;
@@ -279,7 +279,7 @@ always_comb
           wr_addr_o              = prev_rd_addr;
         end
       
-      KEY_MATCH_IN_TAIL_S:
+      LL_KEY_MATCH_LL_IN_TAIL_S:
         begin
           wr_data_o.next_ptr     = '0;
           wr_data_o.next_ptr_val = 1'b0;
@@ -297,9 +297,9 @@ always_comb
   end
 
 // ******* Head Ptr table magic *******
-assign head_table_if.wr_data_ptr      = rd_data_locked.next_ptr;
-assign head_table_if.wr_data_ptr_val  = rd_data_locked.next_ptr_val;
-assign head_table_if.wr_en            = state_first_tick && ( state == KEY_MATCH_IN_HEAD_S );
+assign ll_head_table_if.wr_data_ptr      = rd_data_locked.next_ptr;
+assign ll_head_table_if.wr_data_ptr_val  = rd_data_locked.next_ptr_val;
+assign ll_head_table_if.wr_en            = state_first_tick && ( state == LL_KEY_MATCH_LL_IN_HEAD_S );
 
 // ******* Empty ptr storage ******
 
@@ -309,23 +309,23 @@ assign add_empty_ptr_en_o  = state_first_tick && ( state == CLEAR_RAM_AND_PTR_S 
 // ******* Result calculation *******
 assign result_o.cmd         = task_locked.cmd;
 assign result_o.rescode     = ( ( state == NO_VALID_HEAD_PTR_S     ) ||
-                                ( state == IN_TAIL_WITHOUT_MATCH_S ) ) ? ( DELETE_NOT_SUCCESS_NO_ENTRY ):
-                                                                         ( DELETE_SUCCESS              );
+                                ( state == LL_IN_TAIL_WITHOUT_MATCH_S ) ) ? ( LL_DELETE_NOT_SUCCESS_NO_ENTRY ):
+                                                                         ( LL_DELETE_SUCCESS              );
 
-ht_chain_state_t chain_state;
+ll_ht_chain_state_t chain_state;
 
 always_ff @( posedge clk_i or posedge rst_i )
   if( rst_i )
-    chain_state <= NO_CHAIN;
+    chain_state <= LL_NO_CHAIN;
   else
     if( state != next_state )
       begin
         case( next_state )
-          NO_VALID_HEAD_PTR_S     : chain_state <= NO_CHAIN;
-          IN_TAIL_WITHOUT_MATCH_S : chain_state <= IN_TAIL_NO_MATCH;
-          KEY_MATCH_IN_HEAD_S     : chain_state <= IN_HEAD;
-          KEY_MATCH_IN_MIDDLE_S   : chain_state <= IN_MIDDLE;
-          KEY_MATCH_IN_TAIL_S     : chain_state <= IN_TAIL;
+          NO_VALID_HEAD_PTR_S     : chain_state <= LL_NO_CHAIN;
+          LL_IN_TAIL_WITHOUT_MATCH_S : chain_state <= LL_IN_TAIL_NO_MATCH;
+          LL_KEY_MATCH_LL_IN_HEAD_S     : chain_state <= LL_IN_HEAD;
+          LL_KEY_MATCH_LL_IN_MIDDLE_S   : chain_state <= LL_IN_MIDDLE;
+          LL_KEY_MATCH_LL_IN_TAIL_S     : chain_state <= LL_IN_TAIL;
           // no default: just keep old value
         endcase
       end
@@ -334,6 +334,6 @@ assign result_o.chain_state = chain_state;
 
 assign result_valid_o = ( state == CLEAR_RAM_AND_PTR_S      ) ||
                         ( state == NO_VALID_HEAD_PTR_S      ) ||
-                        ( state == IN_TAIL_WITHOUT_MATCH_S  );
+                        ( state == LL_IN_TAIL_WITHOUT_MATCH_S  );
                       
 endmodule
