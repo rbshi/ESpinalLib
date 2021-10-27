@@ -56,7 +56,6 @@ class LockTableIO(conf: LockTableConfig) extends Bundle{
     lock_resp.txn_id := 0
     lock_resp.resp_type := LockRespType.abort
   }
-
 }
 
 
@@ -80,10 +79,9 @@ class LockTable(conf: LockTableConfig) extends Component {
     // stage lock_req
     val req = RegNextWhen(io.lock_req.payload, io.lock_req.fire)
     // stage ht out
-    val ht_rescode = RegNextWhen(ht.io.ht_res_if.rescode, ht.io.ht_res_if.fire)
     val ht_lock_entry_cast = LockEntry(conf)
     ht_lock_entry_cast.assignFromBits(ht.io.ht_res_if.found_value.asBits) // wire: cast the value of ht to lock_entry
-    val ht_lock_entry = RegNextWhen(ht_lock_entry_cast, ht.io.ht_res_if.fire)
+    val r_ht_lock_entry = RegNextWhen(ht_lock_entry_cast, ht.io.ht_res_if.fire)
 
     val r_lock_resp = Reg(LockRespType())
 
@@ -105,37 +103,47 @@ class LockTable(conf: LockTableConfig) extends Component {
     SEA_HT_RESP
       .whenIsActive{
         ht.io.ht_res_if.ready := True
-        when(ht.io.ht_res_if.fire) {goto(OP_LL_CMD)}
-      }
-      .onExit{
-        // parse the search results to lock resp
-        when(!req.lock_release){
-          when(ht_rescode === HashTableRetCode.sea_success) {
-            when(ht_lock_entry.lock_status | req.lock_type) {
-              r_lock_resp := LockRespType.abort // no wait
+        when(ht.io.ht_res_if.fire) {
+          // parse the search results to lock resp
+          when(!req.lock_release){
+            when(ht.io.ht_res_if.rescode === HashTableRetCode.sea_success) {
+              when(ht_lock_entry_cast.lock_status | req.lock_type) {
+                r_lock_resp := LockRespType.abort // no wait
+                goto(LOCK_RESP)
+              }otherwise{
+                r_lock_resp := LockRespType.grant
+                goto(OP_LL_CMD)
+              }
+            } otherwise{
+              r_lock_resp := LockRespType.grant
+              goto(OP_LL_CMD)
             }
-          }otherwise{r_lock_resp := LockRespType.grant}
-        }otherwise{r_lock_resp := LockRespType.release}
+          } otherwise{
+            r_lock_resp := LockRespType.release
+            goto(OP_LL_CMD)
+          }
+        }
       }
 
     OP_LL_CMD
       .whenIsActive {
         when(req.lock_release) {
           //FIXME: remove from both owner & waiter queue (now only no-wait is implemented)
-          ll_owner.io.sendCmd((req.lock_type ## req.txn_id).asUInt, LinkedListOpCode.del, ht_lock_entry.owner_ptr, ht_lock_entry.owner_ptr_val)
+          ll_owner.io.sendCmd((req.lock_type ## req.txn_id).asUInt, LinkedListOpCode.del, r_ht_lock_entry.owner_ptr, r_ht_lock_entry.owner_ptr_val)
         } otherwise {
           //FIXME: only owner queue is inserted
-          ll_owner.io.sendCmd((req.lock_type ## req.txn_id).asUInt, LinkedListOpCode.ins, ht_lock_entry.owner_ptr, ht_lock_entry.owner_ptr_val)
+          ll_owner.io.sendCmd((req.lock_type ## req.txn_id).asUInt, LinkedListOpCode.ins, r_ht_lock_entry.owner_ptr, r_ht_lock_entry.owner_ptr_val)
         }
         when(ll_owner.io.ll_cmd_if.fire){goto(OP_LL_RESP)}
       }
+
 
     OP_LL_RESP
       .whenIsActive {
         // save the owner_ptr from ll to lock_entry
         when(ll_owner.io.head_table_if.wr_en){
-          ht_lock_entry.owner_ptr := ll_owner.io.head_table_if.wr_data_ptr
-          ht_lock_entry.owner_ptr_val := ll_owner.io.head_table_if.wr_data_ptr_val
+          r_ht_lock_entry.owner_ptr := ll_owner.io.head_table_if.wr_data_ptr
+          r_ht_lock_entry.owner_ptr_val := ll_owner.io.head_table_if.wr_data_ptr_val
         }
         ll_owner.io.ll_res_if.ready := True
         when(ll_owner.io.ll_res_if.fire){goto(OP_HT_CMD)}
@@ -146,12 +154,12 @@ class LockTable(conf: LockTableConfig) extends Component {
       .onEntry {
         switch(r_lock_resp) {
           is(LockRespType.grant) {
-            ht_lock_entry.owner_cnt := ht_lock_entry.owner_cnt + 1
-            ht_lock_entry.lock_status := req.lock_type
+            r_ht_lock_entry.owner_cnt := r_ht_lock_entry.owner_cnt + 1
+            r_ht_lock_entry.lock_status := req.lock_type
           }
-          is(LockRespType.abort) {} // do nothing
+          is(LockRespType.abort) {} // do nothing, bypass now
           is(LockRespType.release) {
-            ht_lock_entry.owner_cnt := ht_lock_entry.owner_cnt - 1
+            r_ht_lock_entry.owner_cnt := r_ht_lock_entry.owner_cnt - 1
           }
         }
       }
@@ -159,21 +167,16 @@ class LockTable(conf: LockTableConfig) extends Component {
         ll_owner.io.ll_res_if.ready := True
         switch(r_lock_resp) {
           is(LockRespType.grant) {
-            ht.io.sendCmd(req.lock_addr, ht_lock_entry.toUInt, HashTableOpCode.ins)
+            ht.io.sendCmd(req.lock_addr, r_ht_lock_entry.toUInt, HashTableOpCode.ins)
           }
-          is(LockRespType.abort) {} // do nothing
+          is(LockRespType.abort) {} // do nothing, bypass now
           is(LockRespType.release) {
-            when(ht_lock_entry.owner_cnt === 0) {
-              ht.io.sendCmd(req.lock_addr, ht_lock_entry.toUInt, HashTableOpCode.del)
-            } otherwise ht.io.sendCmd(req.lock_addr, ht_lock_entry.asBits.asUInt, HashTableOpCode.ins)
+            when(r_ht_lock_entry.owner_cnt === 0) {
+              ht.io.sendCmd(req.lock_addr, r_ht_lock_entry.toUInt, HashTableOpCode.del)
+            } otherwise ht.io.sendCmd(req.lock_addr, r_ht_lock_entry.asBits.asUInt, HashTableOpCode.ins)
           }
         }
-
-        when(r_lock_resp === LockRespType.abort){
-          goto(LOCK_RESP)
-        }otherwise{
-          when(ht.io.ht_cmd_if.fire){goto(OP_HT_RESP)}
-        }
+        when(ht.io.ht_cmd_if.fire){goto(OP_HT_RESP)}
       }
 
     OP_HT_RESP

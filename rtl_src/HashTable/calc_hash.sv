@@ -46,7 +46,8 @@ generate
 
       // dummy hash - just selecing high bits in key like bucket number
       // it can be really helpfull to test hashtable
-      assign bucket = pdata_in_i.cmd.key[ KEY_WIDTH -1 : KEY_WIDTH - BUCKET_WIDTH ];
+      // assign bucket = pdata_in_i.cmd.key[ KEY_WIDTH -1 : KEY_WIDTH - BUCKET_WIDTH ];
+      assign bucket = pdata_in_i.cmd.key[ BUCKET_WIDTH -1 : 0]; // low bits
     end
 
   if( ( HASH_TYPE != "crc32" ) && ( HASH_TYPE != "dummy") )

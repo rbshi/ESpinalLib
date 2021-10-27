@@ -71,7 +71,7 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
 
   def printResp() = {
     if(ht_res_if.valid.toBoolean && ht_res_if.ready.toBoolean){
-      println("[HT] key:" + ht_res_if.key.toBigInt + "\tvalue:" + ht_res_if.value.toBigInt + "\topcode:" + ht_res_if.opcode.toBigInt + "\trescode:" + ht_res_if.rescode.toBigInt)
+      println("[HT] key:" + ht_res_if.key.toBigInt + "\tvalue:" + ht_res_if.value.toBigInt + "\topcode:" + ht_res_if.opcode.toBigInt + "\tbucket:" + ht_res_if.bucket.toBigInt + "\trescode:" + ht_res_if.rescode.toBigInt)
     }
   }
 
