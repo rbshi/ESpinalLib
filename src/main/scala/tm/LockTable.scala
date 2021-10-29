@@ -38,12 +38,16 @@ case class LockReq(conf: LockTableConfig) extends Bundle{
   val lock_addr = UInt(conf.unitAddrWidth bits)
   val lock_type = Bool() // sh, ex
   val lock_release = Bool() // get, release
+  val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
 //  val txn_ts
 }
 
 case class LockResp(conf: LockTableConfig) extends Bundle{
   val txn_id = UInt(conf.txnIDWidth bits)
   val resp_type = LockRespType() // grant, abort, waiting, release
+  val lock_addr = UInt(conf.unitAddrWidth bits) // for test
+  val lock_type = Bool() // for test
+  val lock_idx = UInt(8 bits)
 }
 
 class LockTableIO(conf: LockTableConfig) extends Bundle{
@@ -54,7 +58,10 @@ class LockTableIO(conf: LockTableConfig) extends Bundle{
     lock_req.ready := False
     lock_resp.valid := False
     lock_resp.txn_id := 0
+    lock_resp.lock_addr := 0
+    lock_resp.lock_type := False
     lock_resp.resp_type := LockRespType.abort
+    lock_resp.lock_idx := 0
   }
 }
 
@@ -189,57 +196,12 @@ class LockTable(conf: LockTableConfig) extends Component {
       .whenIsActive{
         io.lock_resp.valid := True
         io.lock_resp.txn_id := req.txn_id
+        io.lock_resp.lock_addr := req.lock_addr
+        io.lock_resp.lock_type := req.lock_type
         io.lock_resp.resp_type := r_lock_resp
+        io.lock_resp.lock_idx := req.lock_idx
         when(io.lock_resp.fire){goto(IDLE)}
       }
   }
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

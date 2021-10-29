@@ -3,7 +3,10 @@ package tm
 import spinal.core._
 import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
-import scala.collection.mutable.Queue
+import scala.collection.mutable._
+import scala.util.Random
+import scala.math._
+
 
 class LockTableTest extends AnyFunSuite {
 
@@ -117,32 +120,111 @@ class LockTableTest extends AnyFunSuite {
     send.join()
   }
 
+  def bulk(dut: LockTable) = {
+    dut.clockDomain.forkStimulus(period = 10)
+    var lockMap = scala.collection.mutable.Map.empty[BigInt, (Int, Boolean, Boolean)] // lock_addr, txn_id, lock_type, lock_release
 
-  test("lock_then_release") {
+    def sendCmd(lock_addr: BigInt, txn_id: Int, lock_type: Boolean, lock_release: Boolean): Unit = {
+      dut.io.lock_req.valid #= true
+      dut.io.lock_req.lock_addr #= lock_addr
+      dut.io.lock_req.txn_id #= txn_id
+      dut.io.lock_req.lock_type #= lock_type
+      dut.io.lock_req.lock_release #= lock_release
+      while (!(dut.io.lock_req.valid.toBoolean && dut.io.lock_req.ready.toBoolean)) {
+        dut.clockDomain.waitSampling()
+      }
+      dut.clockDomain.waitSampling()
+      dut.io.lock_req.valid #= false
+    }
+
+    val send = fork {
+      // init locks
+      val r = new Random()
+      for ( k <- 0 until 100) {
+        val (addr, id, lock_type, lock_release) = (r.nextInt(pow(2, 32).toInt), r.nextInt(pow(2, 8).toInt), r.nextBoolean(), false)
+        lockMap += BigInt(addr) -> (id, lock_type, lock_release) // get_lock
+        sendCmd(addr, id, lock_type, lock_release)
+      }
+
+      // conflict
+      for ( k <- 0 until 10) {
+        val (addr, _) = lockMap.toSeq(r.nextInt(lockMap.size))
+        sendCmd(addr, r.nextInt(pow(2, 8).toInt), r.nextBoolean(), false)
+      }
+
+      // release some
+      for ( k <- 0 until 10) {
+        val (addr, v) = lockMap.toSeq(r.nextInt(lockMap.size))
+        sendCmd(addr, v._1, v._2, true) // release
+        lockMap.-(addr)
+      }
+
+    }
+
+
+    val rec = fork {
+      dut.io.lock_resp.ready #= true
+      while (true) {
+//        dut.ht.io.printResp()
+//        dut.ll_owner.io.printResp()
+        dut.clockDomain.waitSampling()
+
+        if (dut.io.lock_resp.valid.toBoolean && dut.io.lock_resp.ready.toBoolean) {
+          if (dut.io.lock_resp.resp_type.toBigInt == 1) {
+            assert(lockMap.contains(dut.io.lock_resp.lock_addr.toBigInt))
+            assert(lockMap(dut.io.lock_resp.lock_addr.toBigInt)._2 || dut.io.lock_resp.lock_type.toBoolean)
+            println("[Abort] addr: " + dut.io.lock_resp.lock_addr.toBigInt)
+          } // abort
+          if (dut.io.lock_resp.resp_type.toBigInt == 0) {
+            assert(lockMap.contains(dut.io.lock_resp.lock_addr.toBigInt) || !(lockMap(dut.io.lock_resp.lock_addr.toBigInt)._2 || dut.io.lock_resp.lock_type.toBoolean))
+//            assert(lockMap.contains(dut.io.lock_resp.lock_addr.toBigInt))
+          }
+        }
+      }
+    }
+
+    send.join()
+
+  }
+
+
+
+
+//  test("lock_then_release") {
+//    SimConfig.withWave.compile {
+//      val dut = new LockTable(LTConfig)
+//      dut.ll_owner.io.simPublic()
+//      dut.ht.io.simPublic()
+//      dut
+//    }.doSim("test", 99)(lock_then_release)
+//  }
+//
+//  test("lock_conflict") {
+//    SimConfig.withWave.compile {
+//      val dut = new LockTable(LTConfig)
+//      dut.ll_owner.io.simPublic()
+//      dut.ht.io.simPublic()
+//      dut
+//    }.doSim("test", 99)(lock_conflict)
+//  }
+//
+//  test("lock_share_conflict") {
+//    SimConfig.withWave.compile {
+//      val dut = new LockTable(LTConfig)
+//      dut.ll_owner.io.simPublic()
+//      dut.ht.io.simPublic()
+//      dut
+//    }.doSim("test", 99)(lock_share_conflict)
+//  }
+
+  test("bulk") {
     SimConfig.withWave.compile {
       val dut = new LockTable(LTConfig)
       dut.ll_owner.io.simPublic()
       dut.ht.io.simPublic()
       dut
-    }.doSim("test", 99)(lock_then_release)
+    }.doSim("test", 99)(bulk)
   }
 
-  test("lock_conflict") {
-    SimConfig.withWave.compile {
-      val dut = new LockTable(LTConfig)
-      dut.ll_owner.io.simPublic()
-      dut.ht.io.simPublic()
-      dut
-    }.doSim("test", 99)(lock_conflict)
-  }
-
-  test("lock_share_conflict") {
-    SimConfig.withWave.compile {
-      val dut = new LockTable(LTConfig)
-      dut.ll_owner.io.simPublic()
-      dut.ht.io.simPublic()
-      dut
-    }.doSim("test", 99)(lock_share_conflict)
-  }
 
 }
