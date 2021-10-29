@@ -107,6 +107,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
         }
       }
 
+    // AXI_RD_REQ & LOCK_REQ can be concurrent, improve later
     AXI_RD_REQ
       .whenIsActive{
         io.axi.readCmd.valid := True
@@ -138,8 +139,6 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
           when(~r_abort){goto(WRITE_BACK)} otherwise{goto(LOCK_RELEASE)}
         }
       }
-
-
 
     val mem_op_req = OpReq(conf)
 
@@ -176,6 +175,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
           mem_op_req := mem.readSync(tab_iter_cnt) // one clock latency
           tab_iter_cnt := tab_iter_cnt + 1
 
+          // assume the lt_req is always ready (mem read)
           io.lt_req.valid := mem_op_req.mode // if wr
           io.lt_req.lock_addr := mem_op_req.addr
           io.lt_req.lock_release := True
