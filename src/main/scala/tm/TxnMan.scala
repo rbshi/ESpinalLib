@@ -15,12 +15,25 @@ case class OpReq(conf: LockTableConfig) extends Bundle{
   val data = UInt(64 bits)
   val mode = Bool() // r/w
   val txn_sig = UInt(2 bits) // 0: addr mode, 1: txn_start, 2: txn_end
+
+  def setDefault(): Unit = {
+    addr := 0
+    data := 0
+    mode := False
+    txn_sig := 0
+  }
 }
 
 case class OpResp(conf: LockTableConfig) extends Bundle{
   val data = UInt(64 bits) // FIXME word size
   val mode = Bool() // r/w
   val status = Bool() // 0: continue 1: restart
+
+  def setDefault(): Unit = {
+    data := 0
+    mode := False
+    status := False
+  }
 }
 
 case class TxnManIO(conf: LockTableConfig) extends Bundle{
@@ -37,14 +50,16 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
     addressWidth = 64,
     dataWidth    = 64,
     idWidth = 1,
-    useStrb = true,
-    useBurst = true,
+    useStrb = false,
+    useBurst = false,
     useId = true,
     useLock      = false,
     useRegion    = false,
     useCache     = false,
     useProt      = false,
-    useQos       = false
+    useQos       = false,
+    useLast      = false,
+    useLen       = false
   )))
 
   def setDefault() = {
@@ -54,17 +69,29 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
     lt_req.lock_type := False
     lt_req.lock_release := False
     lt_req.lock_idx := 0
-    lt_resp.ready := False
+//    lt_resp.ready := False
+
+    op_req.ready := False
+    op_resp.setDefault()
+    op_resp.valid := False
 
     axi.readCmd.size := log2Up(64 / 8)
+    axi.readCmd.addr := 0
     axi.readCmd.id := 0
-    axi.readCmd.len := 0
-    axi.readCmd.setBurstINCR()
+    axi.readCmd.valid := False
+    axi.writeCmd.valid := False
+    axi.writeCmd.size := 0
+    axi.writeCmd.addr:= 0
+    axi.writeCmd.id:= 0
+//    axi.readRsp.ready := True
+//    axi.writeRsp.ready := True
+    axi.writeData.data := 0
+    axi.writeData.valid := False
   }
 }
 
 
-class TxnMan(conf: LockTableConfig) extends Bundle{
+class TxnMan(conf: LockTableConfig) extends Component {
   val io = new TxnManIO(conf)
   io.setDefault()
 
@@ -74,7 +101,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
 //  val r_abort = RegNextWhen(io.lt_resp.lock_type === LockRespType.abort, io.lt_resp.fire)
   val r_abort = Reg(Bool())
 
-  val mem = Mem(OpReq(conf), 32)
+  val mem = Mem(OpReq(conf), 256)
 
   val sm_req = new StateMachine {
     val IDLE, WAIT_ADDR_OR_END, AXI_RD_REQ, LOCK_REQ, LOCK_WAIT, WRITE_BACK, LOCK_RELEASE, TXN_END = new State
@@ -141,6 +168,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
       }
 
     val mem_op_req = OpReq(conf)
+    mem_op_req.setDefault()
 
     WRITE_BACK
       .onEntry{
@@ -153,7 +181,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
         io.axi.writeCmd.valid := mem_op_req.mode // if wr req
         io.axi.writeData.valid := mem_op_req.mode
         io.axi.writeCmd.addr := mem_op_req.addr
-        io.axi.writeData.data := mem_op_req.data
+        io.axi.writeData.data := mem_op_req.data.asBits
 
         // axi write back
         mem_op_req := mem.readSync(tab_iter_cnt) // one clock latency
@@ -199,7 +227,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
     when(io.axi.readRsp.fire){
       // assume op_resp is always ready
       io.op_resp.valid := True
-      io.op_resp.data := io.axi.readRsp.data
+      io.op_resp.data := io.axi.readRsp.data.asUInt
       io.op_resp.mode := False // read
       io.op_resp.status := r_abort // restart
     }
@@ -219,7 +247,7 @@ class TxnMan(conf: LockTableConfig) extends Bundle{
     io.lt_resp.ready := True
     when(lt_resp_get_fire){
       lk_resp_cnt := lk_resp_cnt + 1
-      r_abort := io.lt_resp.lock_type === LockRespType.abort
+      r_abort := io.lt_resp.resp_type === LockRespType.abort
     }
   }
 
