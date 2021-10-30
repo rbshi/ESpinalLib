@@ -17,7 +17,7 @@ class TxnManTop(conf: LockTableConfig) extends Component{
 
   val io = new Bundle{
     val axi = master(Axi4(Axi4Config(
-      addressWidth = 64,
+      addressWidth = 32,
       dataWidth    = 64,
       idWidth = 1,
       useStrb = false,
@@ -28,8 +28,7 @@ class TxnManTop(conf: LockTableConfig) extends Component{
       useCache     = false,
       useProt      = false,
       useQos       = false,
-      useLast      = false,
-      useLen       = false
+      useLen       = true
     )))
     val op_req = slave Stream(OpReq(conf))
     val op_resp = master Stream(OpResp(conf))
@@ -42,10 +41,9 @@ class TxnManTop(conf: LockTableConfig) extends Component{
 }
 
 
-
 class TxnManTest extends AnyFunSuite {
 
-  val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 4) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
+  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 4) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
   def sendReq(dut: TxnManTop, opReq: OpReqSim): Unit ={
     dut.io.op_req.addr #= opReq.addr
@@ -56,7 +54,7 @@ class TxnManTest extends AnyFunSuite {
 
     dut.clockDomain.waitSamplingWhere(dut.io.op_req.valid.toBoolean && dut.io.op_req.ready.toBoolean)
     opReq.txn_sig.toInt match{
-      case 0 => println("[SendReq] addr: " + opReq.addr + "mode: " + opReq.mode)
+      case 0 => println(s"[Send] Addr: ${opReq.addr}\t Mode: ${opReq.mode}")
       case 1 => println("[TxnStart]")
       case 2 => println("[TxnEnd]")
     }
@@ -66,9 +64,18 @@ class TxnManTest extends AnyFunSuite {
   def recResp(dut: TxnManTop): Unit ={
     dut.io.op_resp.ready #= true
     dut.clockDomain.waitSamplingWhere(dut.io.op_resp.valid.toBoolean && dut.io.op_resp.ready.toBoolean)
-    println(s"Data: ${dut.io.op_resp.data.toBigInt}\t Mode: ${dut.io.op_resp.mode.toBoolean}\t Status: ${dut.io.op_resp.status.toBoolean}")
+    println(s"[Resp] Data: ${dut.io.op_resp.data.toBigInt}\t Mode: ${dut.io.op_resp.mode.toBoolean}\t Status: ${dut.io.op_resp.status.toBoolean}")
   }
 
+  def axiMonitorRdCmd(dut: TxnManTop): Unit = {
+    dut.clockDomain.waitSamplingWhere(dut.io.axi.readCmd.valid.toBoolean && dut.io.axi.readCmd.ready.toBoolean)
+    println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")
+  }
+
+  def axiMonitorRdResp(dut: TxnManTop): Unit = {
+    dut.clockDomain.waitSamplingWhere(dut.io.axi.readRsp.valid.toBoolean && dut.io.axi.readRsp.ready.toBoolean)
+    println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")
+  }
 
   case class OpReqSim(addr:BigInt, data:BigInt, mode:Boolean, txn_sig:BigInt)
 
@@ -77,6 +84,10 @@ class TxnManTest extends AnyFunSuite {
     dut.clockDomain.forkStimulus(period = 10)
     // an axi simulation model
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig())
+    axi_mem.start()
+    // init data in axi mem
+    val mem_init = Array.fill[Byte](1024)(255.toByte)
+    axi_mem.memory.writeArray(0, mem_init)
 
     // init one txn
     var oneTxn = mutable.Queue.empty[OpReqSim]
@@ -93,10 +104,19 @@ class TxnManTest extends AnyFunSuite {
       while(oneTxn.nonEmpty){
         sendReq(dut, oneTxn.dequeue())
       }
+      dut.clockDomain.waitActiveEdge(100)
     }
 
     val rec = fork {
       while(true){recResp(dut)}
+    }
+
+    val axiRdCmd = fork {
+      while(true){axiMonitorRdCmd(dut)}
+    }
+
+    val axiRdResp = fork {
+      while(true){axiMonitorRdResp(dut)}
     }
 
     send.join()

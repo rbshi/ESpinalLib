@@ -47,7 +47,7 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
 
   // to axi
   val axi = master(Axi4(Axi4Config(
-    addressWidth = 64,
+    addressWidth = 32,
     dataWidth    = 64,
     idWidth = 1,
     useStrb = false,
@@ -58,8 +58,7 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
     useCache     = false,
     useProt      = false,
     useQos       = false,
-    useLast      = false,
-    useLen       = false
+    useLen       = true
   )))
 
   def setDefault() = {
@@ -79,17 +78,19 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
     axi.readCmd.addr := 0
     axi.readCmd.id := 0
     axi.readCmd.valid := False
+    axi.readCmd.len := 0
     axi.writeCmd.valid := False
     axi.writeCmd.size := 0
     axi.writeCmd.addr:= 0
     axi.writeCmd.id:= 0
+    axi.writeCmd.len := 0
 //    axi.readRsp.ready := True
 //    axi.writeRsp.ready := True
     axi.writeData.data := 0
+    axi.writeData.last := False
     axi.writeData.valid := False
   }
 }
-
 
 class TxnMan(conf: LockTableConfig) extends Component {
   val io = new TxnManIO(conf)
