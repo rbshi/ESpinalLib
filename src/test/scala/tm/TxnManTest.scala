@@ -83,7 +83,12 @@ class TxnManTest extends AnyFunSuite {
   def one_operator(dut: TxnManTop): Unit ={
     dut.clockDomain.forkStimulus(period = 10)
     // an axi simulation model
-    val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig())
+    val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
+      maxOutstandingReads=128,
+      maxOutstandingWrites=128,
+      interruptProbability=100,
+      interruptMaxDelay=30
+    ))
     axi_mem.start()
     // init data in axi mem
     val mem_init = Array.fill[Byte](1024)(255.toByte)
@@ -104,7 +109,7 @@ class TxnManTest extends AnyFunSuite {
       while(oneTxn.nonEmpty){
         sendReq(dut, oneTxn.dequeue())
       }
-      dut.clockDomain.waitActiveEdge(100)
+      dut.clockDomain.waitSampling(1000)
     }
 
     val rec = fork {

@@ -64,18 +64,18 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
   def setDefault() = {
     lt_req.valid := False
     lt_req.txn_id := 0
-    lt_req.lock_addr := 0
-    lt_req.lock_type := False
-    lt_req.lock_release := False
-    lt_req.lock_idx := 0
+//    lt_req.lock_addr := 0
+//    lt_req.lock_type := False
+//    lt_req.lock_release := False
+//    lt_req.lock_idx := 0
 //    lt_resp.ready := False
 
     op_req.ready := False
-    op_resp.setDefault()
+//    op_resp.setDefault()
     op_resp.valid := False
 
     axi.readCmd.size := log2Up(64 / 8)
-    axi.readCmd.addr := 0
+//    axi.readCmd.addr := 0
     axi.readCmd.id := 0
     axi.readCmd.valid := False
     axi.readCmd.len := 0
@@ -97,158 +97,162 @@ class TxnMan(conf: LockTableConfig) extends Component {
   io.setDefault()
 
   val op_req = RegNextWhen(io.op_req.payload, io.op_req.fire)
-  val lk_req_cnt, lk_resp_cnt, lk_req_wr_cnt, lk_resp_wr_cnt = Reg(UInt(8 bits)).init(0)
+  val lk_req_cnt, lk_resp_cnt, lk_req_wr_cnt, lk_resp_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt = Reg(UInt(8 bits)).init(0)
   val tab_iter_cnt = Reg(UInt(8 bits)).init(0)
-//  val r_abort = RegNextWhen(io.lt_resp.lock_type === LockRespType.abort, io.lt_resp.fire)
-  val r_abort = Reg(Bool())
+  val r_abort, r_to_commit, r_to_cleanup = RegInit(False)
 
   val mem = Mem(OpReq(conf), 256)
-
-  val sm_req = new StateMachine {
-    val IDLE, WAIT_ADDR_OR_END, AXI_RD_REQ, LOCK_REQ, LOCK_WAIT, WRITE_BACK, LOCK_RELEASE, TXN_END = new State
-    setEntry(IDLE)
-
-    IDLE
-      .whenIsActive{
-        // init and reset
-
-        // wait for the start signal
-        io.op_req.ready := True
-        when(io.op_req.fire){goto(WAIT_ADDR_OR_END)}
-      }
-
-    WAIT_ADDR_OR_END
-      .whenIsActive{
-        io.op_req.ready := True
-        when(r_abort){goto(LOCK_RELEASE)} otherwise{
-          when(io.op_req.fire){
-            when(io.op_req.txn_sig===2){
-              // txn_end
-              goto(LOCK_WAIT)
-            } otherwise {
-              switch(io.op_req.mode){
-                is(False){goto(AXI_RD_REQ)} // read
-                is(True){goto(LOCK_REQ)}
-              }
-            }
-          }
-        }
-      }
-
-    // AXI_RD_REQ & LOCK_REQ can be concurrent, improve later
-    AXI_RD_REQ
-      .whenIsActive{
-        io.axi.readCmd.valid := True
-        io.axi.readCmd.addr := op_req.addr
-        when(io.axi.readCmd.fire){goto(LOCK_REQ)}
-      }
-
-    LOCK_REQ
-      .whenIsActive{
-        io.lt_req.valid := True
-        io.lt_req.txn_id := 0 // FIXME
-        io.lt_req.lock_addr := op_req.addr
-        io.lt_req.lock_type := op_req.mode
-        io.lt_req.lock_release := False
-        io.lt_req.lock_idx := lk_req_cnt
-
-        when(io.lt_req.fire){
-          mem.write(lk_resp_cnt, op_req)
-          lk_req_cnt := lk_req_cnt + 1
-          goto(WAIT_ADDR_OR_END)
-        }
-      }
-
-    // op sends txn_end signal (wait for the remaining lock resp)
-    LOCK_WAIT
-      .whenIsActive{
-        // get all lock_resp
-        when(lk_req_cnt === lk_resp_cnt){
-          when(~r_abort){goto(WRITE_BACK)} otherwise{goto(LOCK_RELEASE)}
-        }
-      }
-
-    val mem_op_req = OpReq(conf)
-    mem_op_req.setDefault()
-
-    WRITE_BACK
-      .onEntry{
-        lk_req_wr_cnt := 0
-        tab_iter_cnt := 0
-      }
-      .whenIsActive{
-
-        // assume wr bus is always ready
-        io.axi.writeCmd.valid := mem_op_req.mode // if wr req
-        io.axi.writeData.valid := mem_op_req.mode
-        io.axi.writeCmd.addr := mem_op_req.addr
-        io.axi.writeData.data := mem_op_req.data.asBits
-
-        // axi write back
-        mem_op_req := mem.readSync(tab_iter_cnt) // one clock latency
-        tab_iter_cnt := tab_iter_cnt + 1
-
-        when(mem_op_req.mode){lk_req_wr_cnt := lk_req_wr_cnt + 1}
-
-        when(tab_iter_cnt === lk_req_cnt){goto(LOCK_RELEASE)}
-      }
-
-    LOCK_RELEASE
-      .onEntry{
-        tab_iter_cnt := 0
-      }
-      .whenIsActive{
-        //TODO: release the lock only when get the `corresponding` axi_response
-        // now release lock after get all wr resp
-        when(lk_resp_wr_cnt===lk_req_wr_cnt){
-          mem_op_req := mem.readSync(tab_iter_cnt) // one clock latency
-          tab_iter_cnt := tab_iter_cnt + 1
-
-          // assume the lt_req is always ready (mem read)
-          io.lt_req.valid := mem_op_req.mode // if wr
-          io.lt_req.lock_addr := mem_op_req.addr
-          io.lt_req.lock_release := True
-
-          when(tab_iter_cnt === lk_req_cnt){goto(TXN_END)}
-        }
-      }
-
-    TXN_END
-      .whenIsActive{
-        io.op_resp.status := r_abort
-        io.op_resp.valid := True
-        when(io.op_resp.fire){goto(IDLE)}
-      }
-  }
+  val txn_wr_mem = Mem(OpReq(conf), 256)
+  val txn_lt = Mem(Bits(conf.unitAddrWidth+1+1 bits), 256) // local lock record (for release) wid: addr + mode + t/f
 
 
-  val op_rd_resp = new Area {
-    // set axi resp ready
-    io.axi.readRsp.ready := True
-    when(io.axi.readRsp.fire){
-      // assume op_resp is always ready
-      io.op_resp.valid := True
-      io.op_resp.data := io.axi.readRsp.data.asUInt
-      io.op_resp.mode := False // read
-      io.op_resp.status := r_abort // restart
+  val req_rec = new StateMachine {
+    val TXN_START = new State with EntryPoint
+    val NORMAL, TXN_END = new State
+
+    TXN_START.whenIsActive{
+      io.op_req.ready := True
+
+      // init reg
+
+      when(io.op_req.fire && io.op_req.txn_sig===1){goto(NORMAL)} // receive the txn_start
+    }
+
+    NORMAL.whenIsActive{
+      io.op_req.ready := (io.lt_req.ready && io.axi.ar.ready)
+      when(io.op_req.fire && io.op_req.txn_sig===2){
+        // set flag to txn_commit & txn_cleanup
+        r_to_commit := True
+        r_to_cleanup := True
+        goto(TXN_END)
+      } // receive the txn_end
+    }
+
+    TXN_END.whenIsActive{
+      io.op_req.ready := False
+      when(!r_to_commit && !r_to_cleanup){
+        goto(TXN_START)
+      } // finish txn commit / abort
     }
   }
 
-  // do not need op_wr_resp
-
-  val axi_wr_resp = new Area {
-    // set axi resp ready
-    io.axi.writeRsp.ready := True
-    when(io.axi.writeRsp.fire){lk_resp_wr_cnt := lk_resp_wr_cnt + 1}
+  val req_act = new Area {
+    // lt
+    io.lt_req.lock_addr := op_req.addr
+    io.lt_req.lock_type := op_req.mode
+    io.lt_req.lock_release := False
+    io.lt_req.lock_idx := lk_req_cnt
+    // axi
+    io.axi.ar.addr := op_req.addr
+    // wr_mem
+    when(req_rec.isActive(req_rec.NORMAL)){
+      // lt_req axi.ar must be ready when io.op_req.fire
+      when(io.op_req.fire){
+        lk_req_cnt := lk_req_cnt + 1
+        io.lt_req.valid := True
+        switch(io.op_req.mode){
+          is(False){ // read op: issue axi req & lt_req
+            io.axi.ar.valid := True
+          }
+          is(True){ // write op: issue txn_wr_mem & lt_req
+            txn_wr_mem.write(lk_req_wr_cnt, io.op_req)
+            lk_req_wr_cnt := lk_req_wr_cnt + 1
+          }
+        }
+      }
+    }
   }
 
   val lt_resp = new Area {
-    val lt_resp_get_fire = io.lt_resp.fire && (io.lt_resp.resp_type=/=LockRespType.release)
-    // set resp ready
     io.lt_resp.ready := True
-    when(lt_resp_get_fire){
-      lk_resp_cnt := lk_resp_cnt + 1
-      r_abort := io.lt_resp.resp_type === LockRespType.abort
+    when(io.lt_resp.fire) {
+      when(io.lt_resp.resp_type === LockRespType.grant) {
+        // write to local lock record (lt_resp may arrive out of order)
+        txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
+        lk_resp_cnt := lk_resp_cnt + 1
+      }
+      when(io.lt_resp.resp_type === LockRespType.abort) {
+        r_abort := True
+        lk_resp_cnt := lk_resp_cnt + 1
+      }
+    }
+  }
+
+  val axi_resp = new Area {
+    io.axi.r.ready := True
+
+    io.op_resp.data := io.axi.r.data.asUInt
+    io.op_resp.mode := False // read
+    io.op_resp.status := r_abort // once there's abort lock, send restart
+
+    when(io.axi.r.fire){
+      // assume op_resp is always ready
+      io.op_resp.valid := True
+    }
+
+    // write resp
+    io.axi.b.ready := True
+    when(io.axi.b.fire){cmt_resp_cnt := cmt_resp_cnt + 1}
+  }
+
+
+  val txn_commit = new Area {
+
+    val mem_rdcmd = Stream(UInt(8 bits))
+    mem_rdcmd.payload := cmt_req_cnt
+    mem_rdcmd.valid := False
+    val mem_rddata = txn_wr_mem.streamReadSync(mem_rdcmd) // NOTE
+    mem_rddata.ready := io.axi.aw.ready && io.axi.w.ready
+
+    when(req_rec.isActive(req_rec.TXN_END)) {
+
+      io.axi.aw.addr := mem_rddata.addr
+      io.axi.aw.valid := mem_rddata.valid
+      io.axi.w.data := mem_rddata.data.asBits
+      io.axi.w.valid := mem_rddata.valid
+
+      when(lk_req_cnt === lk_resp_cnt && !r_abort && r_to_commit && io.axi.aw.ready && io.axi.w.ready && cmt_req_cnt < lk_req_wr_cnt) {
+        mem_rdcmd.valid := True
+        when(mem_rdcmd.fire) {
+          cmt_req_cnt := cmt_req_cnt + 1
+        }
+      }
+
+      when(cmt_req_cnt === lk_req_wr_cnt) {
+        r_to_commit := False
+      }
+    }
+  }
+
+  // release locks
+  val txn_cleanup = new Area {
+    val mem_rdcmd = Stream(UInt(8 bits))
+//    val mem_rddata = Stream(Bits(conf.unitAddrWidth+1+1 bits))
+    mem_rdcmd.payload := clean_req_cnt
+    mem_rdcmd.valid := False
+
+    val mem_rddata = txn_lt.streamReadSync(mem_rdcmd)
+    mem_rddata.ready := io.lt_req.ready
+
+    when(req_rec.isActive(req_rec.TXN_END)){
+      // lt
+      io.lt_req.lock_addr := mem_rddata.payload(conf.unitAddrWidth+1 downto 2).asUInt
+      io.lt_req.lock_type := mem_rddata.payload(1)
+      io.lt_req.lock_release := True
+      io.lt_req.valid := mem_rddata.valid && mem_rddata.payload(0) // all txn_lt entries should be valid
+
+      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && io.lt_req.ready && clean_req_wr_cnt < cmt_resp_cnt && clean_req_cnt < lk_req_cnt){
+        mem_rdcmd.valid := True
+        when(mem_rdcmd.fire){clean_req_cnt := clean_req_cnt + 1}
+      }
+
+      when(mem_rddata.valid && mem_rddata.payload(1)){ // wr
+        clean_req_wr_cnt := clean_req_wr_cnt + 1
+      }
+
+      when(clean_req_cnt === lk_req_cnt){
+        r_to_cleanup := False
+      }
     }
   }
 
