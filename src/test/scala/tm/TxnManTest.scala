@@ -11,6 +11,8 @@ import scala.math._
 import spinal.lib.bus.amba4.axi.sim._
 import spinal.lib.{master, slave}
 
+
+// a top level must be made for simulation, fixme: axi4 config
 class TxnManTop(conf: LockTableConfig) extends Component{
   val txn_man = new TxnMan(conf)
   val lt = new LockTable(conf)
@@ -69,14 +71,29 @@ class TxnManTest extends AnyFunSuite {
   }
 
   def axiMonitorRdCmd(dut: TxnManTop): Unit = {
+    while(true){
     dut.clockDomain.waitSamplingWhere(dut.io.axi.readCmd.valid.toBoolean && dut.io.axi.readCmd.ready.toBoolean)
-    println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")
+    println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")}
   }
 
   def axiMonitorRdResp(dut: TxnManTop): Unit = {
+    while(true){
     dut.clockDomain.waitSamplingWhere(dut.io.axi.readRsp.valid.toBoolean && dut.io.axi.readRsp.ready.toBoolean)
-    println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")
+    println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")}
   }
+
+  def axiMonitorWrCmd(dut: TxnManTop): Unit = {
+    while(true){
+      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeCmd.valid.toBoolean && dut.io.axi.writeCmd.ready.toBoolean)
+      println(s"[AXI WrCmd]: WrAddr: ${dut.io.axi.writeCmd.addr.toBigInt}")}
+  }
+
+  def axiMonitorWrData(dut: TxnManTop): Unit = {
+    while(true){
+      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeData.valid.toBoolean && dut.io.axi.writeData.ready.toBoolean)
+      println(s"[AXI WrData]: WrData: ${dut.io.axi.writeData.data.toBigInt}")}
+  }
+
 
   case class OpReqSim(addr:BigInt, data:BigInt, mode:Boolean, upgrade: Boolean, txn_sig:BigInt)
 
@@ -87,7 +104,10 @@ class TxnManTest extends AnyFunSuite {
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads=128,
       maxOutstandingWrites=128,
-      readResponseDelay=30
+      readResponseDelay=30,
+      writeResponseDelay=30,
+      useCustom = true
+//      writeResponseDelay=30
     ))
     axi_mem.start()
     // init data in axi mem
@@ -118,13 +138,10 @@ class TxnManTest extends AnyFunSuite {
       while(true){recResp(dut)}
     }
 
-    val axiRdCmd = fork {
-      while(true){axiMonitorRdCmd(dut)}
-    }
-
-    val axiRdResp = fork {
-      while(true){axiMonitorRdResp(dut)}
-    }
+    val axiRdCmd = fork {axiMonitorRdCmd(dut)}
+    val axiRdResp = fork {axiMonitorRdResp(dut)}
+    val axiWrCmd = fork {axiMonitorWrCmd(dut)}
+    val axiWrData = fork {axiMonitorWrData(dut)}
 
     val waitEnd = fork {
       while (!dut.txn_man.io.txn_end_test.toBoolean)
