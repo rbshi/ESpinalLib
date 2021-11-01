@@ -1,7 +1,6 @@
 package tm
 
 import spinal.core.{UInt, _}
-import spinal.core
 import spinal.core.Mem
 import spinal.lib._
 import spinal.lib.fsm._
@@ -14,6 +13,7 @@ case class OpReq(conf: LockTableConfig) extends Bundle{
   val addr = UInt(conf.unitAddrWidth bits)
   val data = UInt(64 bits)
   val mode = Bool() // r/w
+  val upgrade = Bool() // normal / upgrade
   val txn_sig = UInt(2 bits) // 0: addr mode, 1: txn_start, 2: txn_end
 
   def setDefault(): Unit = {
@@ -38,12 +38,12 @@ case class OpResp(conf: LockTableConfig) extends Bundle{
 
 case class TxnManIO(conf: LockTableConfig) extends Bundle{
   // to operator
-  val op_req = slave Stream(OpReq(conf))
-  val op_resp = master Stream(OpResp(conf))
+  val op_req = slave Stream OpReq(conf)
+  val op_resp = master Stream OpResp(conf)
 
   // to lock table
-  val lt_req = master Stream(LockReq(conf))
-  val lt_resp = slave Stream(LockResp(conf))
+  val lt_req = master Stream LockReq(conf)
+  val lt_resp = slave Stream LockResp(conf)
 
   // to axi
   val axi = master(Axi4(Axi4Config(
@@ -60,6 +60,8 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
     useQos       = false,
     useLen       = true
   )))
+
+  val txn_end_test = out Bool()
 
   def setDefault() = {
     lt_req.valid := False
@@ -89,11 +91,13 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle{
     axi.writeData.data := 0
     axi.writeData.last := False
     axi.writeData.valid := False
+
+    txn_end_test := False
   }
 }
 
 class TxnMan(conf: LockTableConfig) extends Component {
-  val io = new TxnManIO(conf)
+  val io = TxnManIO(conf)
   io.setDefault()
 
   val lk_req_cnt, lk_resp_cnt, lk_req_wr_cnt, lk_resp_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt = Reg(UInt(8 bits)).init(0)
@@ -129,6 +133,7 @@ class TxnMan(conf: LockTableConfig) extends Component {
     TXN_END.whenIsActive{
       io.op_req.ready := False
       when(!r_to_commit && !r_to_cleanup){
+        io.txn_end_test := True
         goto(TXN_START)
       } // finish txn commit / abort
     }
@@ -138,6 +143,7 @@ class TxnMan(conf: LockTableConfig) extends Component {
     // lt
     io.lt_req.lock_addr := io.op_req.addr
     io.lt_req.lock_type := io.op_req.mode
+    io.lt_req.lock_upgrade := io.op_req.upgrade
     io.lt_req.lock_release := False
     io.lt_req.lock_idx := lk_req_cnt
     // axi
@@ -209,12 +215,10 @@ class TxnMan(conf: LockTableConfig) extends Component {
       io.axi.w.data := mem_rddata.data.asBits
       io.axi.w.valid := mem_rddata.valid
 
-      when(lk_req_cnt === lk_resp_cnt && !r_abort && r_to_commit && io.axi.aw.ready && io.axi.w.ready && cmt_req_cnt < lk_req_wr_cnt) {
+      when(lk_req_cnt === lk_resp_cnt && !r_abort && r_to_commit && cmt_req_cnt < lk_req_wr_cnt) {
         mem_rdcmd.valid := True
-        when(mem_rdcmd.fire) {
-          cmt_req_cnt := cmt_req_cnt + 1
-        }
       }
+      when(mem_rdcmd.fire){cmt_req_cnt := cmt_req_cnt + 1}
 
       when(cmt_req_cnt === lk_req_wr_cnt) {
         r_to_commit := False
@@ -240,12 +244,14 @@ class TxnMan(conf: LockTableConfig) extends Component {
       io.lt_req.lock_idx := clean_req_cnt
       io.lt_req.valid := mem_rddata.valid && mem_rddata.payload(0) // all txn_lt entries should be valid
 
-      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && io.lt_req.ready && (clean_req_wr_cnt < cmt_resp_cnt || cmt_resp_cnt === 0)  && clean_req_cnt < lk_req_cnt){
+      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && (clean_req_wr_cnt < cmt_resp_cnt || cmt_resp_cnt === 0 || clean_req_wr_cnt === lk_req_wr_cnt)  && clean_req_cnt < lk_req_cnt){
+//      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && (clean_req_wr_cnt <= cmt_resp_cnt)  && clean_req_cnt < lk_req_cnt){
         mem_rdcmd.valid := True
-        when(mem_rdcmd.fire){clean_req_cnt := clean_req_cnt + 1}
       }
 
-      when(mem_rddata.valid && mem_rddata.payload(1)){ // wr
+      when(mem_rdcmd.fire){clean_req_cnt := clean_req_cnt + 1}
+
+      when(mem_rddata.fire && mem_rddata.payload(1)){ // wr
         clean_req_wr_cnt := clean_req_wr_cnt + 1
       }
 

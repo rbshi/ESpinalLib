@@ -49,6 +49,7 @@ class TxnManTest extends AnyFunSuite {
     dut.io.op_req.addr #= opReq.addr
     dut.io.op_req.data #= opReq.data
     dut.io.op_req.mode #= opReq.mode
+    dut.io.op_req.upgrade #= opReq.upgrade
     dut.io.op_req.txn_sig #= opReq.txn_sig
     dut.io.op_req.valid #= true
 
@@ -77,7 +78,7 @@ class TxnManTest extends AnyFunSuite {
     println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")
   }
 
-  case class OpReqSim(addr:BigInt, data:BigInt, mode:Boolean, txn_sig:BigInt)
+  case class OpReqSim(addr:BigInt, data:BigInt, mode:Boolean, upgrade: Boolean, txn_sig:BigInt)
 
 
   def one_operator(dut: TxnManTop): Unit ={
@@ -90,18 +91,20 @@ class TxnManTest extends AnyFunSuite {
     ))
     axi_mem.start()
     // init data in axi mem
-    val mem_init = Array.fill[Byte](1024)(255.toByte)
+    val mem_init = Array.fill[Byte](1024)(0.toByte)
     axi_mem.memory.writeArray(0, mem_init)
 
     // init one txn
     var oneTxn = mutable.Queue.empty[OpReqSim]
-    val op_start = OpReqSim(0, 0, mode = false, 1)
+    val op_start = OpReqSim(0, 0, mode = false, false, 1)
     oneTxn.enqueue(op_start)
 
+    val rand = Random
+
     for (k <- 0 until 16){
-      oneTxn.enqueue(OpReqSim(k, k, false, 0))
+      oneTxn.enqueue(OpReqSim(k, k, rand.nextBoolean(), false, 0))
     }
-    oneTxn.enqueue(OpReqSim(0, 0, false, 2))
+    oneTxn.enqueue(OpReqSim(0, 0, false, false, 2))
 
 
     val send = fork {
@@ -124,12 +127,10 @@ class TxnManTest extends AnyFunSuite {
     }
 
     val waitEnd = fork {
-      while (dut.txn_man.r_to_commit.toBoolean || dut.txn_man.r_to_cleanup.toBoolean){
-        dut.clockDomain.waitSampling(2)
-      }
+      while (!dut.txn_man.io.txn_end_test.toBoolean)
+        dut.clockDomain.waitSampling()
       println("[TxnEnd] cleanup finished")
     }
-
 
     send.join()
     waitEnd.join()
@@ -139,8 +140,7 @@ class TxnManTest extends AnyFunSuite {
   test("one_operator") {
     SimConfig.withWave.compile {
       val dut = new TxnManTop(LTConfig)
-      dut.txn_man.r_to_cleanup.simPublic()
-      dut.txn_man.r_to_commit.simPublic()
+      dut.txn_man.io.txn_end_test.simPublic()
       dut
     }.doSim("one_operator", 99)(one_operator)
   }
