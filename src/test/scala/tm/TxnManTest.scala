@@ -85,7 +85,8 @@ class TxnManTest extends AnyFunSuite {
     // an axi simulation model
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads=128,
-      maxOutstandingWrites=128
+      maxOutstandingWrites=128,
+      readResponseDelay=30
     ))
     axi_mem.start()
     // init data in axi mem

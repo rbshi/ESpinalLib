@@ -37,6 +37,7 @@ case class LockReq(conf: LockTableConfig) extends Bundle{
   val txn_id = UInt(conf.txnIDWidth bits)
   val lock_addr = UInt(conf.unitAddrWidth bits)
   val lock_type = Bool() // sh, ex
+  val lock_upgrade = Bool() // normal, upgrade
   val lock_release = Bool() // get, release
   val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
 //  val txn_ts
@@ -47,6 +48,7 @@ case class LockResp(conf: LockTableConfig) extends Bundle{
   val resp_type = LockRespType() // grant, abort, waiting, release
   val lock_addr = UInt(conf.unitAddrWidth bits) // for test
   val lock_type = Bool() // for test
+  val lock_upgrade = Bool() // normal, upgrade
   val lock_idx = UInt(8 bits)
 }
 
@@ -60,6 +62,7 @@ class LockTableIO(conf: LockTableConfig) extends Bundle{
     lock_resp.txn_id := 0
     lock_resp.lock_addr := 0
     lock_resp.lock_type := False
+    lock_resp.lock_upgrade := False
     lock_resp.resp_type := LockRespType.abort
     lock_resp.lock_idx := 0
   }
@@ -114,7 +117,8 @@ class LockTable(conf: LockTableConfig) extends Component {
           // parse the search results to lock resp
           when(!req.lock_release){
             when(ht.io.ht_res_if.rescode === HashTableRetCode.sea_success) {
-              when(ht_lock_entry_cast.lock_status | req.lock_type) {
+              when((!req.lock_upgrade && (ht_lock_entry_cast.lock_status | req.lock_type)) || (req.lock_upgrade && ht_lock_entry_cast.owner_cnt > 1)){
+//              when(ht_lock_entry_cast.lock_status | req.lock_type) {
                 r_lock_resp := LockRespType.abort // no wait
                 goto(LOCK_RESP)
               }otherwise{
@@ -198,6 +202,7 @@ class LockTable(conf: LockTableConfig) extends Component {
         io.lock_resp.txn_id := req.txn_id
         io.lock_resp.lock_addr := req.lock_addr
         io.lock_resp.lock_type := req.lock_type
+        io.lock_resp.lock_upgrade := req.lock_upgrade
         io.lock_resp.resp_type := r_lock_resp
         io.lock_resp.lock_idx := req.lock_idx
         when(io.lock_resp.fire){goto(IDLE)}
