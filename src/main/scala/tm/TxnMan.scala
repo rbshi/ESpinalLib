@@ -96,9 +96,7 @@ class TxnMan(conf: LockTableConfig) extends Component {
   val io = new TxnManIO(conf)
   io.setDefault()
 
-  val op_req = RegNextWhen(io.op_req.payload, io.op_req.fire)
   val lk_req_cnt, lk_resp_cnt, lk_req_wr_cnt, lk_resp_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt = Reg(UInt(8 bits)).init(0)
-  val tab_iter_cnt = Reg(UInt(8 bits)).init(0)
   val r_abort, r_to_commit, r_to_cleanup = RegInit(False)
 
   val mem = Mem(OpReq(conf), 256)
@@ -138,14 +136,14 @@ class TxnMan(conf: LockTableConfig) extends Component {
 
   val req_act = new Area {
     // lt
-    io.lt_req.lock_addr := op_req.addr
-    io.lt_req.lock_type := op_req.mode
+    io.lt_req.lock_addr := io.op_req.addr
+    io.lt_req.lock_type := io.op_req.mode
     io.lt_req.lock_release := False
     io.lt_req.lock_idx := lk_req_cnt
     // axi
-    io.axi.ar.addr := op_req.addr
-    // wr_mem
-    when(req_rec.isActive(req_rec.NORMAL)){
+    io.axi.ar.addr := io.op_req.addr
+
+    when(io.op_req.txn_sig===0){ // normal mode
       // lt_req axi.ar must be ready when io.op_req.fire
       when(io.op_req.fire){
         lk_req_cnt := lk_req_cnt + 1
@@ -239,9 +237,10 @@ class TxnMan(conf: LockTableConfig) extends Component {
       io.lt_req.lock_addr := mem_rddata.payload(conf.unitAddrWidth+1 downto 2).asUInt
       io.lt_req.lock_type := mem_rddata.payload(1)
       io.lt_req.lock_release := True
+      io.lt_req.lock_idx := clean_req_cnt
       io.lt_req.valid := mem_rddata.valid && mem_rddata.payload(0) // all txn_lt entries should be valid
 
-      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && io.lt_req.ready && clean_req_wr_cnt < cmt_resp_cnt && clean_req_cnt < lk_req_cnt){
+      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && io.lt_req.ready && (clean_req_wr_cnt < cmt_resp_cnt || cmt_resp_cnt === 0)  && clean_req_cnt < lk_req_cnt){
         mem_rdcmd.valid := True
         when(mem_rdcmd.fire){clean_req_cnt := clean_req_cnt + 1}
       }

@@ -85,9 +85,7 @@ class TxnManTest extends AnyFunSuite {
     // an axi simulation model
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads=128,
-      maxOutstandingWrites=128,
-      interruptProbability=100,
-      interruptMaxDelay=30
+      maxOutstandingWrites=128
     ))
     axi_mem.start()
     // init data in axi mem
@@ -124,13 +122,24 @@ class TxnManTest extends AnyFunSuite {
       while(true){axiMonitorRdResp(dut)}
     }
 
+    val waitEnd = fork {
+      while (dut.txn_man.r_to_commit.toBoolean || dut.txn_man.r_to_cleanup.toBoolean){
+        dut.clockDomain.waitSampling(2)
+      }
+      println("[TxnEnd] cleanup finished")
+    }
+
+
     send.join()
+    waitEnd.join()
   }
 
 
   test("one_operator") {
     SimConfig.withWave.compile {
       val dut = new TxnManTop(LTConfig)
+      dut.txn_man.r_to_cleanup.simPublic()
+      dut.txn_man.r_to_commit.simPublic()
       dut
     }.doSim("one_operator", 99)(one_operator)
   }
