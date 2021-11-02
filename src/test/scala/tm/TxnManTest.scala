@@ -70,28 +70,33 @@ class TxnManTest extends AnyFunSuite {
     println(s"[Resp] Data: ${dut.io.op_resp.data.toBigInt}\t Mode: ${dut.io.op_resp.mode.toBoolean}\t Status: ${dut.io.op_resp.status.toBoolean}")
   }
 
-  def axiMonitorRdCmd(dut: TxnManTop): Unit = {
-    while(true){
+  def axiMonitor(dut: TxnManTop): Unit = {
+    fork{while(true){
     dut.clockDomain.waitSamplingWhere(dut.io.axi.readCmd.valid.toBoolean && dut.io.axi.readCmd.ready.toBoolean)
-    println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")}
-  }
+    println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")}}
 
-  def axiMonitorRdResp(dut: TxnManTop): Unit = {
-    while(true){
-    dut.clockDomain.waitSamplingWhere(dut.io.axi.readRsp.valid.toBoolean && dut.io.axi.readRsp.ready.toBoolean)
-    println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")}
-  }
+    fork{while(true){
+      dut.clockDomain.waitSamplingWhere(dut.io.axi.readRsp.valid.toBoolean && dut.io.axi.readRsp.ready.toBoolean)
+      println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")}}
 
-  def axiMonitorWrCmd(dut: TxnManTop): Unit = {
-    while(true){
+    fork{while(true){
       dut.clockDomain.waitSamplingWhere(dut.io.axi.writeCmd.valid.toBoolean && dut.io.axi.writeCmd.ready.toBoolean)
-      println(s"[AXI WrCmd]: WrAddr: ${dut.io.axi.writeCmd.addr.toBigInt}")}
+      println(s"[AXI WrCmd]: WrAddr: ${dut.io.axi.writeCmd.addr.toBigInt}")}}
+
+    fork{while(true){
+      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeData.valid.toBoolean && dut.io.axi.writeData.ready.toBoolean)
+      println(s"[AXI WrData]: WrData: ${dut.io.axi.writeData.data.toBigInt}")}}
   }
 
-  def axiMonitorWrData(dut: TxnManTop): Unit = {
-    while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeData.valid.toBoolean && dut.io.axi.writeData.ready.toBoolean)
-      println(s"[AXI WrData]: WrData: ${dut.io.axi.writeData.data.toBigInt}")}
+  def ltMonitor(dut: TxnManTop): Unit = {
+    fork{while (true){
+        dut.clockDomain.waitSamplingWhere(dut.lt.io.lock_req.valid.toBoolean && dut.lt.io.lock_req.ready.toBoolean)
+        println(s"[Lock Req]: addr: ${dut.lt.io.lock_req.lock_addr.toBigInt}\t type: ${dut.lt.io.lock_req.lock_type.toBoolean}\t upgrade: ${dut.lt.io.lock_req.lock_upgrade.toBoolean}\t release: ${dut.lt.io.lock_req.lock_release.toBoolean}\t")
+      }}
+    fork {while (true) {
+        dut.clockDomain.waitSamplingWhere(dut.lt.io.lock_resp.valid.toBoolean && dut.lt.io.lock_resp.ready.toBoolean)
+        println(s"[Lock Resp]: addr: ${dut.lt.io.lock_resp.lock_addr.toBigInt}\t type: ${dut.lt.io.lock_resp.lock_type.toBoolean}\t upgrade: ${dut.lt.io.lock_resp.lock_upgrade.toBoolean}\t resp: ${dut.lt.io.lock_resp.resp_type.toBigInt}\t")
+      }}
   }
 
 
@@ -107,7 +112,6 @@ class TxnManTest extends AnyFunSuite {
       readResponseDelay=30,
       writeResponseDelay=30,
       useCustom = true
-//      writeResponseDelay=30
     ))
     axi_mem.start()
     // init data in axi mem
@@ -116,15 +120,23 @@ class TxnManTest extends AnyFunSuite {
 
     // init one txn
     var oneTxn = mutable.Queue.empty[OpReqSim]
-    val op_start = OpReqSim(0, 0, mode = false, false, 1)
-    oneTxn.enqueue(op_start)
 
-    val rand = Random
+    oneTxn.enqueue(OpReqSim(0, 0, mode = false, false, 1))  // txn_start
 
-    for (k <- 0 until 16){
-      oneTxn.enqueue(OpReqSim(k, k, rand.nextBoolean(), false, 0))
+//    val rand = Random
+//    for (k <- 0 until 16){
+//      oneTxn.enqueue(OpReqSim(k, k, rand.nextBoolean(), false, 0))
+//    }
+
+    for (k <- 0 until 4){
+      oneTxn.enqueue(OpReqSim(k, k, false, false, 0)) // read,
     }
-    oneTxn.enqueue(OpReqSim(0, 0, false, false, 2))
+
+    for (k <- 0 until 4){
+      oneTxn.enqueue(OpReqSim(k, k, true, true, 0)) // write, upgrade
+    }
+
+    oneTxn.enqueue(OpReqSim(0, 0, false, false, 2)) // txn_end
 
 
     val send = fork {
@@ -138,10 +150,8 @@ class TxnManTest extends AnyFunSuite {
       while(true){recResp(dut)}
     }
 
-    val axiRdCmd = fork {axiMonitorRdCmd(dut)}
-    val axiRdResp = fork {axiMonitorRdResp(dut)}
-    val axiWrCmd = fork {axiMonitorWrCmd(dut)}
-    val axiWrData = fork {axiMonitorWrData(dut)}
+    val axiMon = fork {axiMonitor(dut)}
+    val ltMon = fork {ltMonitor(dut)}
 
     val waitEnd = fork {
       while (!dut.txn_man.io.txn_end_test.toBoolean)
@@ -158,6 +168,7 @@ class TxnManTest extends AnyFunSuite {
     SimConfig.withWave.compile {
       val dut = new TxnManTop(LTConfig)
       dut.txn_man.io.txn_end_test.simPublic()
+      dut.lt.io.simPublic()
       dut
     }.doSim("one_operator", 99)(one_operator)
   }

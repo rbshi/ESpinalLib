@@ -169,10 +169,13 @@ class TxnMan(conf: LockTableConfig) extends Component {
         // write to local lock record (lt_resp may arrive out of order)
         txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
         lk_resp_cnt := lk_resp_cnt + 1
+        when(io.lt_resp.lock_type){lk_resp_wr_cnt := lk_resp_wr_cnt + 1}
       }
       when(io.lt_resp.resp_type === LockRespType.abort) {
         r_abort := True
+        // fixme: simplify
         lk_resp_cnt := lk_resp_cnt + 1
+        when(io.lt_resp.lock_type){lk_resp_wr_cnt := lk_resp_wr_cnt + 1}
       }
     }
   }
@@ -255,11 +258,12 @@ class TxnMan(conf: LockTableConfig) extends Component {
         clean_req_cnt := clean_req_cnt + 1
       }
 
-      when(mem_rddata.fire && mem_rddata.payload(1)) { // wr
-        clean_req_wr_cnt := clean_req_wr_cnt + 1
+      when(mem_rddata.fire){
+        when(mem_rddata.payload(1)){clean_req_wr_cnt := clean_req_wr_cnt + 1} // wr lock
       }
 
-      when(clean_req_cnt === lk_req_cnt) {
+      // clean_req_cnt is one-cycle ahead of lt_req fire
+      when(clean_req_cnt === lk_req_cnt &  mem_rddata.fire) {
         r_to_cleanup := False
       }
     }
