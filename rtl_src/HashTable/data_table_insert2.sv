@@ -40,7 +40,7 @@
 
 import hash_table::*;
 
-module data_table_insert #(
+module data_table_insert2 #(
   parameter RAM_LATENCY = 2,
   parameter A_WIDTH     = TABLE_ADDR_WIDTH
 ) (
@@ -98,6 +98,7 @@ ht_pdata_t              task_locked;
 logic                   key_match;
 logic                   got_tail;
 logic [A_WIDTH-1:0]     rd_addr;
+logic [A_WIDTH-1:0]     rd_addr_d1;
 
 logic                   rd_data_val;
 logic                   rd_data_val_d1;
@@ -105,7 +106,7 @@ logic                   state_first_tick;
 
 rd_data_val_helper #( 
   .RAM_LATENCY                          ( RAM_LATENCY  ) 
-) rd_data_val_helper (
+) rd_data_val_helper1 (
   .clk_i                                ( clk_i        ),
   .rst_i                                ( rst_i        ),
 
@@ -113,6 +114,13 @@ rd_data_val_helper #(
   .rd_data_val_o                        ( rd_data_val  )
 
 );
+
+always_ff @( posedge clk_i or posedge rst_i )
+  if( rst_i )
+    rd_addr_d1 <= 0;
+  else
+    rd_addr_d1 <= rd_addr; 
+
 
 always_ff @( posedge clk_i or posedge rst_i )
   if( rst_i )
@@ -222,8 +230,8 @@ assign rd_en_o      = ( state_first_tick || rd_data_val_d1 ) && ( ( state == REA
                                                                   ( state == GO_ON_CHAIN_S ) );   
 assign rd_addr_o    = rd_addr; 
 
-assign wr_en_o      = state_first_tick && ( ( state == KEY_MATCH_S            ) ||
-                                            ( state == NO_HEAD_PTR_WR_DATA_S  ) || 
+// assign wr_en_o      = state_first_tick && ( ( state == KEY_MATCH_S            ) ||
+assign wr_en_o      = state_first_tick && ( ( state == NO_HEAD_PTR_WR_DATA_S  ) ||  // do not overwrite when KEY_MATCH_S
                                             ( state == ON_TAIL_WR_DATA_S      ) ||
                                             ( state == ON_TAIL_UPD_NEXT_PTR_S ) ); 
 
@@ -240,13 +248,13 @@ always_comb
     wr_addr_o = 'x;
 
     case( state )
-      KEY_MATCH_S:
-        begin
-          // just rewriting value
-          wr_data_o.value = task_locked.cmd.value;
+      // KEY_MATCH_S:
+      //   begin
+      //     // just rewriting value
+      //     wr_data_o.value = task_locked.cmd.value;
 
-          wr_addr_o       = rd_addr;
-        end
+      //     wr_addr_o       = rd_addr;
+      //   end
 
       NO_HEAD_PTR_WR_DATA_S, ON_TAIL_WR_DATA_S:
         begin
@@ -308,6 +316,10 @@ always_comb
     result_o.bucket      = task_locked.bucket;
     result_o.found_value = '0;
     result_o.chain_state = chain_state;
+
+    // for INSERT_FIND_SAMEKEY
+    result_o.find_addr = rd_addr_d1;
+    result_o.ram_data = rd_data_locked;
 
     case( state )
       KEY_MATCH_S:     result_o.rescode = INSERT_FIND_SAME_KEY;

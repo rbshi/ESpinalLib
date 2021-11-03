@@ -27,10 +27,19 @@ module hash_table_top(
   output     [VALUE_WIDTH-1:0]   ht_res_if_found_value,
   output     [2:0]    ht_res_if_chain_state,
 
+  output  [TABLE_ADDR_WIDTH-1:0] ht_res_if_find_addr,
+  output  [KEY_WIDTH+VALUE_WIDTH+HEAD_PTR_WIDTH+1-1:0] ht_res_if_ram_data,
+
+
   input      ht_clear_ram_run,
   output logic     ht_clear_ram_done,
   input      dt_clear_ram_run,
-  output logic     dt_clear_ram_done
+  output logic     dt_clear_ram_done,
+
+  input update_en,
+  input [HEAD_PTR_WIDTH-1:0] update_addr,
+  input [KEY_WIDTH+VALUE_WIDTH+HEAD_PTR_WIDTH+1-1:0] update_data
+
 );
 
   
@@ -52,6 +61,9 @@ module hash_table_top(
   assign ht_res_if_bucket = ht_res_out.result.bucket;
   assign ht_res_if_found_value = ht_res_out.result.found_value;
   assign ht_res_if_chain_state = ht_res_out.result.chain_state;
+
+  assign ht_res_if_find_addr = ht_res_out.result.find_addr;
+  assign ht_res_if_ram_data = ht_res_out.result.ram_data;
 
 
 head_table_if head_table_if(
@@ -126,8 +138,11 @@ data_table d_tbl (
 
   // interface to clear [fill with zero] all ram content
   .clear_ram_run_i                        ( dt_clear_ram_run   ),
-  .clear_ram_done_o                       ( dt_clear_ram_done  )
+  .clear_ram_done_o                       ( dt_clear_ram_done  ),
 
+  .update_en                              (update_en),
+  .update_addr                            (update_addr),
+  .update_data                            (update_data)
 );
 
 endmodule

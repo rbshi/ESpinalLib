@@ -10,7 +10,7 @@ import scala.math._
 import util.RenameIO
 
 object HashTableOpCode extends SpinalEnum() {
-  val sea, ins, del = newElement()
+  val sea, ins, del, ins2 = newElement()
 }
 
 object HashTableRetCode extends SpinalEnum() {
@@ -39,12 +39,21 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
     val bucket = UInt(bucketWidth bits)
     val found_value = UInt(valWidth bits)
     val chain_state = UInt(3 bits) // NO_CHAIN, IN_HEAD, IN_MIDDLE, IN_TAIL, IN_TAIL_NO_MATCH
+
+    // for insert2 function: insert_find_samekey
+    val find_addr = UInt(tableAddrWidth bits)
+    val ram_data = UInt(keyWidth+valWidth+tableAddrWidth bits)
   })
 
   val ht_clear_ram_run = in Bool() // head table
   val ht_clear_ram_done = out Bool()
   val dt_clear_ram_run = in Bool() // data table
   val dt_clear_ram_done = out Bool()
+
+  // for insert2 function: insert_find_samekey
+  val update_en = in Bool()
+  val update_data = in UInt(keyWidth+valWidth+tableAddrWidth bits)
+  val update_addr = in UInt(tableAddrWidth bits)
 
   def setDefault() = {
     ht_cmd_if.valid := False
@@ -54,6 +63,9 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
     ht_res_if.ready := False
     ht_clear_ram_run := False
     dt_clear_ram_run := False
+    update_en := False
+    update_addr := 0
+    update_data := 0
   }
 
   def sendCmd(key:UInt, value:UInt, opcode:SpinalEnumElement[HashTableOpCode.type]): Unit ={
@@ -75,7 +87,6 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
     }
   }
 
-
 }
 
 // parameters of blockbox is in sv package FIXME: MUST be modified manually
@@ -94,6 +105,7 @@ class hash_table_top(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth
   addRTLPath("rtl_src/HashTable/data_table.sv")
   addRTLPath("rtl_src/HashTable/data_table_delete.sv")
   addRTLPath("rtl_src/HashTable/data_table_insert.sv")
+  addRTLPath("rtl_src/HashTable/data_table_insert2.sv")
   addRTLPath("rtl_src/HashTable/data_table_search.sv")
   addRTLPath("rtl_src/HashTable/data_table_search_wrapper.sv")
   addRTLPath("rtl_src/HashTable/empty_ptr_storage.sv")
@@ -117,4 +129,7 @@ class HashTableDUT(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:I
   ht.io.dt_clear_ram_run <> io.dt_clear_ram_run
   ht.io.ht_clear_ram_done <> io.ht_clear_ram_done
   ht.io.dt_clear_ram_done <> io.dt_clear_ram_done
+  ht.io.update_en <> io.update_en
+  ht.io.update_addr <> io.update_addr
+  ht.io.update_data <> io.update_data
 }

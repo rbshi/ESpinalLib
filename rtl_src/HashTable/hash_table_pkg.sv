@@ -16,7 +16,8 @@ package hash_table;
   typedef enum logic [1:0] {
     OP_SEARCH,
     OP_INSERT,
-    OP_DELETE
+    OP_DELETE,
+    OP_INSERT2
   } ht_opcode_t;
 
   typedef enum int unsigned {
@@ -24,7 +25,7 @@ package hash_table;
     SEARCH_NOT_SUCCESS_NO_ENTRY,
 
     INSERT_SUCCESS,
-    INSERT_SUCCESS_SAME_KEY, 
+    INSERT_FIND_SAME_KEY, 
     INSERT_NOT_SUCCESS_TABLE_IS_FULL,
 
     DELETE_SUCCESS,
@@ -83,10 +84,15 @@ package hash_table;
     logic  [BUCKET_WIDTH-1:0]   bucket;
 
     // valid only for opcode = OP_SEARCH
-    logic [VALUE_WIDTH-1:0]     found_value;       
+    logic [VALUE_WIDTH-1:0]     found_value;
     
     // only for verification
     ht_chain_state_t            chain_state;
+
+    // for INSERT_FIND_SAMEKEY
+    logic [TABLE_ADDR_WIDTH-1:0] find_addr;
+    logic [KEY_WIDTH+VALUE_WIDTH+HEAD_PTR_WIDTH+1-1:0] ram_data;
+
   } ht_result_t;
 
 endpackage

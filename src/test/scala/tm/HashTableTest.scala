@@ -13,23 +13,32 @@ class HashTableTest extends AnyFunSuite {
 
     dut.io.ht_clear_ram_run #= false
     dut.io.dt_clear_ram_run #= false
+    dut.io.update_en #= false
+    dut.io.update_addr #= 0
+    dut.io.update_data #= 0
 
 
     var simHT = scala.collection.mutable.Map.empty[Int, Int]
     val prepCmd = fork {
       // init hash table for sim
       val r = new Random()
-      val sizeHT = 128
+      val sizeHT = 4
       for (a <- 1 to sizeHT) {
-        simHT += r.nextInt(pow(2, 32).toInt) -> a
+        simHT += a * 2 -> a
       }
 
       //
       var cmdQueue = scala.collection.mutable.Queue.empty[(SpinalEnumElement[HashTableOpCode.type], Int, Int)] // opcode, key, value
       for ((k, v) <- simHT) {
-        cmdQueue += ((HashTableOpCode.ins, k, v)) // insert
+        cmdQueue += ((HashTableOpCode.ins2, k, v)) // insert
       }
       sendCmd()
+
+      for ((k, v) <- simHT) {
+        cmdQueue += ((HashTableOpCode.ins2, k, 888)) // insert2, change a value, should not be updated
+      }
+      sendCmd()
+
 
       for ((k, v) <- simHT) {
         cmdQueue += ((HashTableOpCode.sea, k, v)) // search
@@ -42,11 +51,11 @@ class HashTableTest extends AnyFunSuite {
         }
       }
       sendCmd()
-
-      for ((k, v) <- simHT) {
-        cmdQueue += ((HashTableOpCode.sea, k, v)) // search, k%16==0 should not exist
-      }
-      sendCmd()
+//
+//      for ((k, v) <- simHT) {
+//        cmdQueue += ((HashTableOpCode.sea, k, v)) // search, k%16==0 should not exist
+//      }
+//      sendCmd()
 
 
       def sendCmd(): Unit = {
@@ -70,15 +79,25 @@ class HashTableTest extends AnyFunSuite {
       dut.io.ht_res_if.ready #= true
       while (true){
         dut.clockDomain.waitSampling()
+        dut.io.update_en #= false
         if (dut.io.ht_res_if.valid.toBoolean) {
           println("[RECE] key:" + dut.io.ht_res_if.key.toBigInt + "\tvalue:" + dut.io.ht_res_if.value.toBigInt + "\tresponse:" + dut.io.ht_res_if.rescode.toBigInt + "\tfound_val:" + dut.io.ht_res_if.found_value.toBigInt)
           // compare if search found
           if (dut.io.ht_res_if.rescode.toBigInt == 0){
-            assert(dut.io.ht_res_if.found_value.toBigInt == simHT(dut.io.ht_res_if.key.toBigInt.toInt))
+//            assert(dut.io.ht_res_if.found_value.toBigInt == simHT(dut.io.ht_res_if.key.toBigInt.toInt))
+//            assert(dut.io.ht_res_if.found_value.toBigInt == 888)
           }
           //
           if (dut.io.ht_res_if.rescode.toBigInt == 1){
             assert(dut.io.ht_res_if.key.toBigInt%4==0)
+          }
+
+          if (dut.io.ht_res_if.rescode.toBigInt == 3){
+            println(s"[Info] findAddr: ${dut.io.ht_res_if.find_addr.toBigInt}\t ramData: ${dut.io.ht_res_if.ram_data.toBigInt}")
+            // do update
+            dut.io.update_data #= (dut.io.ht_res_if.ram_data.toBigInt % 2048 + 888 * 2048 + (dut.io.ht_res_if.key.toBigInt << (11+31)))
+            dut.io.update_addr #= dut.io.ht_res_if.find_addr.toBigInt
+            dut.io.update_en #= true
           }
         }
       }
@@ -88,6 +107,6 @@ class HashTableTest extends AnyFunSuite {
   }
 
   test("insert_search_delete") {
-    SimConfig.compile(new HashTableDUT(32, 16, 8, 10)).doSim("test", 99)(insert_search_delete)
+    SimConfig.withWave.compile(new HashTableDUT(32, 31, 8, 10)).doSim("test", 99)(insert_search_delete)
   }
 }

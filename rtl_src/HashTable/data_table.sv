@@ -20,18 +20,23 @@ module data_table(
 
   // interface to clear [fill with zero] all ram content
   input                                clear_ram_run_i,
-  output logic                         clear_ram_done_o
+  output logic                         clear_ram_done_o, 
+
+  input update_en,
+  input [HEAD_PTR_WIDTH-1:0] update_addr,
+  input ram_data_t update_data
 
 );
 localparam D_WIDTH     = $bits( ram_data_t );
 localparam A_WIDTH     = HEAD_PTR_WIDTH;
-localparam RAM_LATENCY = 2;
+localparam RAM_LATENCY = 1;
 
 localparam SEARCH_ = 0;
 localparam INSERT_ = 1;
 localparam DELETE_ = 2;
+localparam INSERT2_ = 3;
 
-localparam DIR_CNT = 3; 
+localparam DIR_CNT = 4; 
 localparam DIR_CNT_WIDTH = $clog2( DIR_CNT );
 
 ram_data_t                ram_rd_data;
@@ -54,6 +59,8 @@ logic                     wr_en_w   [DIR_CNT-1:0];
 logic       [A_WIDTH-1:0] empty_addr;
 logic                     empty_addr_val;
 logic                     empty_addr_rd_ack;
+logic                     empty_addr_rd_ack_insert;
+logic                     empty_addr_rd_ack_insert2;
 
 logic       [A_WIDTH-1:0] add_empty_ptr;
 logic                     add_empty_ptr_en;
@@ -70,6 +77,10 @@ ht_res_if ht_eng_res[DIR_CNT-1:0](
 );
 
 head_table_if head_table_insert_if( 
+  .clk( clk_i )
+);
+
+head_table_if head_table_insert2_if( 
   .clk( clk_i )
 );
 
@@ -105,6 +116,8 @@ assign wr_addr_w[SEARCH_] = '0;
 assign wr_data_w[SEARCH_] = '0;
 assign wr_en_w  [SEARCH_] = 1'b0;
 
+assign empty_addr_rd_ack = empty_addr_rd_ack_insert | empty_addr_rd_ack_insert2;
+
 data_table_insert #(
   .RAM_LATENCY                            ( RAM_LATENCY                 )
 ) ins_eng (
@@ -127,7 +140,7 @@ data_table_insert #(
     // to empty pointer storage
   .empty_addr_i                           ( empty_addr        ),
   .empty_addr_val_i                       ( empty_addr_val    ),
-  .empty_addr_rd_ack_o                    ( empty_addr_rd_ack ),
+  .empty_addr_rd_ack_o                    ( empty_addr_rd_ack_insert ),
 
   .head_table_if                          ( head_table_insert_if         ),
 
@@ -136,6 +149,7 @@ data_table_insert #(
   .result_valid_o                         ( ht_eng_res[INSERT_].valid  ),
   .result_ready_i                         ( ht_eng_res[INSERT_].ready  )
 );
+
 
 data_table_delete #(
   .RAM_LATENCY                            ( RAM_LATENCY                     )
@@ -168,11 +182,44 @@ data_table_delete #(
   .result_ready_i                         ( ht_eng_res[DELETE_].ready  )
 );
 
+data_table_insert2 #(
+  .RAM_LATENCY                            ( RAM_LATENCY                 )
+) ins2_eng (
+  .clk_i                                  ( clk_i                       ),
+  .rst_i                                  ( rst_i                       ),
+    
+  .task_i                                 ( task_w                      ),
+  .task_valid_i                           ( task_valid       [INSERT2_]  ),
+  .task_ready_o                           ( task_ready       [INSERT2_]  ),
+    
+    // to data RAM
+  .rd_data_i                              ( ram_rd_data                 ),
+  .rd_addr_o                              ( rd_addr_w        [INSERT2_]  ),
+  .rd_en_o                                ( rd_en_w          [INSERT2_]  ),
+
+  .wr_addr_o                              ( wr_addr_w        [INSERT2_]  ),
+  .wr_data_o                              ( wr_data_w        [INSERT2_]  ),
+  .wr_en_o                                ( wr_en_w          [INSERT2_]  ),
+    
+    // to empty pointer storage
+  .empty_addr_i                           ( empty_addr        ),
+  .empty_addr_val_i                       ( empty_addr_val    ),
+  .empty_addr_rd_ack_o                    ( empty_addr_rd_ack_insert2 ),
+
+  .head_table_if                          ( head_table_insert2_if         ),
+
+    // output interface with result
+  .result_o                               ( ht_eng_res[INSERT2_].result ),
+  .result_valid_o                         ( ht_eng_res[INSERT2_].valid  ),
+  .result_ready_i                         ( ht_eng_res[INSERT2_].ready  )
+);
+
 assign task_w = pdata_in_i;
 
 assign task_proccessing[ SEARCH_ ] = search_task_in_proccess;
 assign task_proccessing[ INSERT_ ] = !task_ready[ INSERT_ ];
 assign task_proccessing[ DELETE_ ] = !task_ready[ DELETE_ ];
+assign task_proccessing[ INSERT2_ ] = !task_ready[ INSERT2_ ];
 
 always_comb
   begin
@@ -181,11 +228,12 @@ always_comb
     task_valid[ SEARCH_ ] = pdata_in_valid_i && ( task_w.cmd.opcode == OP_SEARCH );
     task_valid[ INSERT_ ] = pdata_in_valid_i && ( task_w.cmd.opcode == OP_INSERT );
     task_valid[ DELETE_ ] = pdata_in_valid_i && ( task_w.cmd.opcode == OP_DELETE );
+    task_valid[ INSERT2_ ] = pdata_in_valid_i && ( task_w.cmd.opcode == OP_INSERT2 );
     
     case( task_w.cmd.opcode )
       OP_SEARCH:
         begin
-          if( task_proccessing[ INSERT_ ] || task_proccessing[ DELETE_ ] )
+          if( task_proccessing[ INSERT_ ] || task_proccessing[ DELETE_ ] || task_proccessing[ INSERT2_ ])
             begin
               pdata_in_ready_o      = 1'b0;
               task_valid[ SEARCH_ ] = 1'b0;
@@ -198,7 +246,7 @@ always_comb
 
       OP_INSERT:
         begin
-          if( task_proccessing[ SEARCH_ ] || task_proccessing[ DELETE_ ] )
+          if( task_proccessing[ SEARCH_ ] || task_proccessing[ DELETE_ ] || task_proccessing[ INSERT2_ ])
             begin
               pdata_in_ready_o      = 1'b0;
               task_valid[ INSERT_ ] = 1'b0;
@@ -209,13 +257,24 @@ always_comb
 
       OP_DELETE:
         begin
-          if( task_proccessing[ SEARCH_ ] || task_proccessing[ INSERT_ ] )
+          if( task_proccessing[ SEARCH_ ] || task_proccessing[ INSERT_ ] || task_proccessing[ INSERT2_ ])
             begin
               pdata_in_ready_o      = 1'b0;
               task_valid[ DELETE_ ] = 1'b0;
             end
           else
             pdata_in_ready_o = task_ready[ DELETE_ ];
+        end
+
+      OP_INSERT2:
+        begin
+          if( task_proccessing[ SEARCH_ ] || task_proccessing[ INSERT_ ] || task_proccessing[ DELETE_ ])
+            begin
+              pdata_in_ready_o      = 1'b0;
+              task_valid[ INSERT2_ ] = 1'b0;
+            end
+          else
+            pdata_in_ready_o = task_ready[ INSERT2_ ];
         end
 
       default: 
@@ -268,6 +327,13 @@ always_comb
         head_table_if.wr_data_ptr     = head_table_insert_if.wr_data_ptr;     
         head_table_if.wr_data_ptr_val = head_table_insert_if.wr_data_ptr_val;
         head_table_if.wr_en           = head_table_insert_if.wr_en; 
+      end
+    else if( head_table_insert2_if.wr_en )
+      begin
+        head_table_if.wr_addr         = head_table_insert2_if.wr_addr;         
+        head_table_if.wr_data_ptr     = head_table_insert2_if.wr_data_ptr;     
+        head_table_if.wr_data_ptr_val = head_table_insert2_if.wr_data_ptr_val;
+        head_table_if.wr_en           = head_table_insert2_if.wr_en; 
       end
     else
       begin
@@ -340,7 +406,7 @@ assign clear_ram_done_o = clear_ram_flag && ( clear_addr == '1 );
 true_dual_port_ram_single_clock #( 
   .DATA_WIDTH                             ( D_WIDTH           ), 
   .ADDR_WIDTH                             ( A_WIDTH           ), 
-  .REGISTER_OUT                           ( 1                 )
+  .REGISTER_OUT                           ( 0                 )
 ) data_ram (
   .clk                                    ( clk_i             ),
 
@@ -350,9 +416,10 @@ true_dual_port_ram_single_clock #(
   .re_a                                   ( 1'b1              ),
   .q_a                                    ( ram_rd_data       ),
 
-  .addr_b                                 ( ram_wr_addr       ),
-  .data_b                                 ( ram_wr_data       ),
-  .we_b                                   ( ram_wr_en         ),
+  .addr_b                                 ( update_en? update_addr : ram_wr_addr ),
+  .data_b                                 ( update_en? update_data : ram_wr_data ),
+  .we_b                                   ( ram_wr_en | update_en ),
+
   .re_b                                   ( 1'b0              ),
   .q_b                                    (                   )
 );

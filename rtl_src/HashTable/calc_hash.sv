@@ -71,7 +71,7 @@ always_comb
 
 ht_delay #(
   .D_WIDTH                                ( $bits( pdata_out_o ) ),
-  .DELAY                                  ( 1                    ),
+  .DELAY                                  ( 0                    ),
   .PIPELINE_READY                         ( 0                    )
 ) ht_d1 (
   .clk_i                                  ( clk_i                ),
