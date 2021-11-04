@@ -10,7 +10,7 @@ import scala.math._
 
 class LockTableTest extends AnyFunSuite {
 
-  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 4) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
+  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
   def sendReq(dut: LockTable, reqQueue: Queue[(Int, Int, Boolean, Boolean)]): Unit = {
     while(reqQueue.nonEmpty){
@@ -36,8 +36,6 @@ class LockTableTest extends AnyFunSuite {
     while (true){
       //        dut.ht.io.printCmd()
       dut.ht.io.printResp()
-      //        dut.ll_owner.io.printCmd()
-      dut.ll_owner.io.printResp()
 
       dut.clockDomain.waitSampling()
 
@@ -165,8 +163,7 @@ class LockTableTest extends AnyFunSuite {
     val rec = fork {
       dut.io.lock_resp.ready #= true
       while (true) {
-//        dut.ht.io.printResp()
-//        dut.ll_owner.io.printResp()
+
         dut.clockDomain.waitSampling()
 
         if (dut.io.lock_resp.valid.toBoolean && dut.io.lock_resp.ready.toBoolean) {
@@ -186,9 +183,6 @@ class LockTableTest extends AnyFunSuite {
     send.join()
 
   }
-
-
-
 
 //  test("lock_then_release") {
 //    SimConfig.withWave.compile {
@@ -220,7 +214,6 @@ class LockTableTest extends AnyFunSuite {
   test("bulk") {
     SimConfig.withWave.compile {
       val dut = new LockTable(LTConfig)
-      dut.ll_owner.io.simPublic()
       dut.ht.io.simPublic()
       dut
     }.doSim("test", 99)(bulk)

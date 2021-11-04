@@ -42,7 +42,7 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
 
     // for insert2 function: insert_find_samekey
     val find_addr = UInt(tableAddrWidth bits)
-    val ram_data = UInt(keyWidth+valWidth+tableAddrWidth bits)
+    val ram_data = UInt(keyWidth+valWidth+tableAddrWidth+1 bits)
   })
 
   val ht_clear_ram_run = in Bool() // head table
@@ -52,7 +52,7 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
 
   // for insert2 function: insert_find_samekey
   val update_en = in Bool()
-  val update_data = in UInt(keyWidth+valWidth+tableAddrWidth bits)
+  val update_data = in UInt(keyWidth+valWidth+tableAddrWidth+1 bits)
   val update_addr = in UInt(tableAddrWidth bits)
 
   def setDefault() = {

@@ -7,7 +7,7 @@
 package hash_table;
   
   parameter KEY_WIDTH        = 32;
-  parameter VALUE_WIDTH      = 31;
+  parameter VALUE_WIDTH      = 9; // lock_status + owner_cnt(8bit)
   parameter BUCKET_WIDTH     = 8;
   parameter HASH_TYPE        = "dummy";
   parameter TABLE_ADDR_WIDTH = 10;

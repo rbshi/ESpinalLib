@@ -45,7 +45,7 @@ class TxnManTop(conf: LockTableConfig) extends Component{
 
 class TxnManTest extends AnyFunSuite {
 
-  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 4) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
+  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
   def sendReq(dut: TxnManTop, opReq: OpReqSim): Unit ={
     dut.io.op_req.addr #= opReq.addr
