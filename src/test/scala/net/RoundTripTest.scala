@@ -55,44 +55,24 @@ class RoundTripTest extends AnyFunSuite {
 
   // fixme: currently I cannot use [T], since #= does not support
   def sendOnStream(dut: Component, stream: Stream[Bits], data: BigInt): Unit ={
-    var delay = true
     stream.valid #= true
     stream.payload #= data
-    while (!stream.ready.toBoolean){
-      dut.clockDomain.waitSampling()
-      delay = false
-    }
-    if(delay)
-      dut.clockDomain.waitSampling()
+    dut.clockDomain.waitSamplingWhere(stream.valid.toBoolean && stream.ready.toBoolean)
     stream.valid #= false
   }
 
   def sendOnStream(dut: Component, stream: Stream[Bool], data: Boolean): Unit ={
-    var delay = true
     stream.valid #= true
     stream.payload #= data
-    while (!stream.ready.toBoolean){
-      dut.clockDomain.waitSampling()
-      delay = false
-    }
-    if(delay)
-      dut.clockDomain.waitSampling()
+    dut.clockDomain.waitSamplingWhere(stream.valid.toBoolean && stream.ready.toBoolean)
     stream.valid #= false
   }
 
   def recOnStream[T <: Data](dut: Component, stream: Stream[T]): T = {
-    var data = stream.payload
-    var delay = true
     stream.ready #= true
-    while (!stream.valid.toBoolean){
-      dut.clockDomain.waitSampling()
-      delay = false
-    }
-    data = stream.payload
-    if(delay)
-      dut.clockDomain.waitSampling()
+    dut.clockDomain.waitSamplingWhere(stream.valid.toBoolean && stream.ready.toBoolean)
     stream.ready #= false
-    data
+    stream.payload
   }
 
 
@@ -121,8 +101,7 @@ class RoundTripTest extends AnyFunSuite {
     }
 
     val open_port = fork {
-      while(!f_init)
-        dut.clockDomain.waitSampling()
+      dut.clockDomain.waitSamplingWhere(f_init)
       val rd_port = recOnStream(dut, dut.io.net.listen_port).toBigInt
       println(s"[ListenPort]: open port @$rd_port")
       sendOnStream(dut, dut.io.net.port_status, true)
@@ -131,31 +110,32 @@ class RoundTripTest extends AnyFunSuite {
     }
 
     val send_notif = fork {
-      var n_notif = 10
+      dut.clockDomain.waitSamplingWhere(f_open_port)
+      var n_notif = 1024
       while (n_notif > 0){
-        if(f_open_port){
-          sendOnStream(dut, dut.io.net.notification, genNotif(0, 64, 0, 1, 1)) // 64
-          println(s"[Notif] pkg: $n_notif")
-          n_notif -= 1
-        } else{dut.clockDomain.waitSampling()}
+        sendOnStream(dut, dut.io.net.notification, genNotif(0, 64, 0, 1, 1)) // 64
+        println(s"[Notif] pkg: $n_notif")
+        n_notif -= 1
       }
     }
 
     val rx_process = fork {
+      dut.clockDomain.waitSamplingWhere(f_open_port)
+      var n = 1
       while(true) {
-        if (f_open_port) {
-          // sequential: read_pkg >> rx_meta >> rx_data
-          val rx_len = recOnStream(dut, dut.io.net.read_pkg).toBigInt>>16 // high 16 bits
-          val rx_len_pgk = rx_len / 64
-          println(s"[RxPkg] rx_len: $rx_len_pgk")
-          sendOnStream(dut, dut.io.net.rx_meta, rx_len) // send rx_meta
-          println(s"[RxMeta] sent.")
-          for (a <- 0 until rx_len_pgk.toInt) {
-            val rx_data = genRxData(BigInt(a), a === rx_len_pgk.toInt - 1)
-            sendOnStream(dut, dut.io.net.rx_data, rx_data)
-            println(s"[RxData] pkg $a sent.")
-          }
-        } else{dut.clockDomain.waitSampling()}
+        // sequential: read_pkg >> rx_meta >> rx_data
+        val rx_len = recOnStream(dut, dut.io.net.read_pkg).toBigInt>>16 // high 16 bits
+        val rx_len_pgk = rx_len / 64
+        println(s"[RxPkg] rx_len: $rx_len_pgk")
+        sendOnStream(dut, dut.io.net.rx_meta, rx_len) // send rx_meta
+        println(s"[RxMeta] sent.")
+        for (a <- 0 until rx_len_pgk.toInt) {
+          val rx_data = genRxData(BigInt(a), a === rx_len_pgk.toInt - 1)
+          sendOnStream(dut, dut.io.net.rx_data, rx_data)
+          println(s"[RxData] pkg $a sent.")
+        }
+        println(s"[RxProcess] pkg idx: $n")
+        n += 1
       }
     }
 
@@ -169,27 +149,28 @@ class RoundTripTest extends AnyFunSuite {
       f_open_connect = true
 
       // $finish
-      dut.clockDomain.waitSampling(1000)
+      dut.clockDomain.waitSampling(10000)
     }
 
     val tx_meta_process = fork {
+      dut.clockDomain.waitSamplingWhere(f_open_connect)
+      var n = 1
       while(true) {
-        if(f_open_connect) {
-          val tx_meta = recOnStream(dut, dut.io.net.tx_meta).toBigInt
-          println(s"[TxMeta]: txLen: ${tx_meta >> 16}\t sid: ${tx_meta & 0xFFFF}")
-          sendOnStream(dut, dut.io.net.tx_status, genTxStatus(8, tx_meta & 0xFFFF, 0xFF, 0))
-          println(s"[TxStatus]: tx_status sent.")
-        } else {dut.clockDomain.waitSampling()}
+        val tx_meta = recOnStream(dut, dut.io.net.tx_meta).toBigInt
+        println(s"[TxMeta]: txLen: ${tx_meta >> 16}\t sid: ${tx_meta & 0xFFFF}")
+        sendOnStream(dut, dut.io.net.tx_status, genTxStatus(8, tx_meta & 0xFFFF, 0xFF, 0))
+        println(s"[TxStatus]: tx_status sent, pkg idx: $n.")
+        n += 1
       }
     }
 
     val tx_data = fork {
+      dut.clockDomain.waitSamplingWhere(f_open_connect)
+      var n = 1
       while(true) {
-        if(f_open_connect) {
-          val tx_data = recOnStream(dut, dut.io.net.tx_data).toBigInt
-          println(s"[TxData]: txData: ${tx_data & 0xFFFF}\t kep: ${(tx_data >> 512) & 0xFFFF} last: ${(tx_data >> (512+64)) & 0x01}")
-          dut.clockDomain.waitSampling()
-        } else {dut.clockDomain.waitSampling()}
+        val tx_data = recOnStream(dut, dut.io.net.tx_data).toBigInt
+        println(s"[TxData]: txData: ${tx_data & 0xFFFF}\t kep: ${(tx_data >> 512) & 0xFFFF}\t last: ${(tx_data >> (512+64)) & 0x01}\t pkg idx: $n")
+        n += 1
       }
     }
 

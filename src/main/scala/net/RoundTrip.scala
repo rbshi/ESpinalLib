@@ -66,6 +66,8 @@ case class RoundTrip() extends Component with SetDefaultIO {
     // directly push rx_data to fifo for tx
     io.net.rx_data >> rxDataFifo.io.push
 
+    val rRdCnt, rNotifCnt, rNotif = Reg(UInt(32 bits)).init(0)
+
     val fsm = new StateMachine{
 
       val INIT = new State with EntryPoint
@@ -95,8 +97,13 @@ case class RoundTrip() extends Component with SetDefaultIO {
         .whenIsActive{
           io.net.rx_meta.ready := True
           io.net.rx_data.ready := True
+
+          when(io.net.notification.fire){rNotif := rNotif + 1}
+          when(notifFifo.io.push.fire){rNotifCnt := rNotifCnt + 1}
+
           when(io.net.rx_data.fire){
             // rd logic here, store in a fifo to send back, drive outside. do nothing here...
+            rRdCnt := rRdCnt + 1
           }
         }
     }
@@ -178,7 +185,7 @@ case class RoundTrip() extends Component with SetDefaultIO {
             when(tx_status.error===2){txMetaFifo.io.push.valid := True} // send tx_meta again
           }
 
-          // fixme: now it's the logic ONLY support pkgWordCount=1
+          // fixme: now it's the logic ONLY support pkgWordCount=1 (tx_status.fire)
 
           when(rxDataFifo.io.push.fire){
             // the last pkg
