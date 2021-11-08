@@ -20,44 +20,50 @@ case class RoundTrip() extends Component with SetDefaultIO {
 
   io.net.setDefault()
 
-//  io.control.ar.isMasterInterface = false
-//  io.control.r.isMasterInterface = true
-//  io.control.aw.isMasterInterface = false
-//  io.control.w.isMasterInterface = false
-//  io.control.b.isMasterInterface = true
-//  setDefStream(io.control.ar)
-//  setDefStream(io.control.r)
-//  setDefStream(io.control.aw)
-//  setDefStream(io.control.w)
-//  setDefStream(io.control.b)
-
   // axilite control registers
   val ctlreg = new AxiLite4SlaveFactory(io.control)
-  val ap_start = ctlreg.createReadAndWrite(Bool(), 0, 0)
-//  val ap_done = ctlreg.createReadOnly(Bool(), 0, 1)
-//  val ap_idle = ctlreg.createReadOnly(Bool(), 0, 2)
-//  val ap_ready = ctlreg.createReadOnly(Bool(), 0, 3)
+  val ap_start = ctlreg.createReadAndWrite(Bool(), 0, 0).init(False)
+  val ap_done = ctlreg.createReadOnly(Bool(), 0, 1).init(False)
+  val ap_idle = ctlreg.createReadOnly(Bool(), 0, 2).init(True)
+  val ap_ready = ctlreg.createReadOnly(Bool(), 0, 3).init(False)
 
   // net config reg
   val useConn = ctlreg.createReadAndWrite(UInt(32 bits), 0x10, 0)
   val useIpAddr = ctlreg.createReadAndWrite(UInt(32 bits), 0x18, 0)
-  val pkgWordCount = ctlreg.createReadAndWrite(UInt(16 bits), 0x20, 0)
-  val baseIpAddr = ctlreg.createReadAndWrite(UInt(32 bits), 0x30, 0)
-  val dualModeEn = ctlreg.createReadAndWrite(UInt(32 bits), 0x38, 0)
-  val packetGap = ctlreg.createReadAndWrite(UInt(32 bits), 0x40, 0)
-  val swRst = ctlreg.createReadAndWrite(Bool(), 0x48, 0) // soft reset
+  val pkgWordCount = ctlreg.createReadAndWrite(UInt(32 bits), 0x20, 0)
+  val swRst = ctlreg.createReadAndWrite(Bool(), 0x40, 0).init(False) // soft reset
+
+  val notifCnt = Counter(32 bits, io.net.notification.fire)
+  val rxpkgCnt = Counter(32 bits, io.net.read_pkg.fire)
+  val rxmetaCnt = Counter(32 bits, io.net.rx_meta.fire)
+  val rxdataCnt = Counter(32 bits, io.net.rx_data.fire)
+  val txmetaCnt = Counter(32 bits, io.net.tx_meta.fire)
+  val txstatusCnt = Counter(32 bits, io.net.tx_status.fire)
+  val txdataCnt = Counter(32 bits, io.net.tx_data.fire)
+
+  // status Cnt
+  ctlreg.readAndWrite(notifCnt, 0x24, 0)
+  ctlreg.readAndWrite(rxpkgCnt, 0x28, 0)
+  ctlreg.readAndWrite(rxmetaCnt, 0x2c, 0)
+  ctlreg.readAndWrite(rxdataCnt, 0x30, 0)
+  ctlreg.readAndWrite(txmetaCnt, 0x34, 0)
+  ctlreg.readAndWrite(txstatusCnt, 0x38, 0)
+  ctlreg.readAndWrite(txdataCnt, 0x3c, 0)
 
 
   // rxData >> this >> txData
   val rxDataFifo = StreamFifo(netData(512).asBits, 512) // several brams
+  rxDataFifo.io.flush := False
 
   val server = new Area{
 
-    // type case
+    // type cast
     val notification = io.net.notification.payload.toDataType(notif())
 
     // notification fifo >> read_pkg
     val notifFifo = StreamFifo(readPkg().asBits, 512) // a sdp bram
+    notifFifo.io.flush := False
+
     notifFifo.io.push.valid <> io.net.notification.valid
     io.net.notification.ready <> (notifFifo.io.push.ready && rxDataFifo.io.push.ready) // ready to get both notif and rxData
     notifFifo.io.push.payload <>  notification.length ## notification.sid
@@ -66,8 +72,6 @@ case class RoundTrip() extends Component with SetDefaultIO {
     // directly push rx_data to fifo for tx
     io.net.rx_data >> rxDataFifo.io.push
 
-    val rRdCnt, rNotifCnt, rNotif = Reg(UInt(32 bits)).init(0)
-
     val fsm = new StateMachine{
 
       val INIT = new State with EntryPoint
@@ -75,6 +79,13 @@ case class RoundTrip() extends Component with SetDefaultIO {
 
       INIT
         .whenIsActive{
+          notifFifo.io.flush := True
+          rxDataFifo.io.flush := True
+          notifCnt.clear()
+          rxpkgCnt.clear()
+          rxmetaCnt.clear()
+          rxdataCnt.clear()
+
           when(ap_start){goto{OPEN_PORT}}
         }
 
@@ -97,17 +108,11 @@ case class RoundTrip() extends Component with SetDefaultIO {
         .whenIsActive{
           io.net.rx_meta.ready := True
           io.net.rx_data.ready := True
-
-          when(io.net.notification.fire){rNotif := rNotif + 1}
-          when(notifFifo.io.push.fire){rNotifCnt := rNotifCnt + 1}
-
-          when(io.net.rx_data.fire){
-            // rd logic here, store in a fifo to send back, drive outside. do nothing here...
-            rRdCnt := rRdCnt + 1
-          }
         }
     }
   }
+
+
 
 
   val client = new Area{
@@ -124,6 +129,7 @@ case class RoundTrip() extends Component with SetDefaultIO {
 
     // txMetaFifo
     val txMetaFifo = StreamFifo(txMeta().asBits, 512)
+    txMetaFifo.io.flush := False
     txMetaFifo.io.pop >> io.net.tx_meta
 
     txMetaFifo.io.push.valid := False
@@ -140,14 +146,18 @@ case class RoundTrip() extends Component with SetDefaultIO {
 
       INIT
         .whenIsActive{
+          txMetaFifo.io.flush := True
+          txmetaCnt.clear()
+          txstatusCnt.clear()
+          txdataCnt.clear()
+
+          pkgCnt := 0
           when(ap_start){goto{INIT_CON}}
         }
 
       // init connection: open_connection,
       INIT_CON
         .whenIsActive{
-          // clear the status
-
           io.net.open_connection.payload := ip_tuple.asBits
           io.net.open_connection.valid := True
           when(io.net.open_connection.fire){goto(WAIT_CON)}
@@ -161,13 +171,7 @@ case class RoundTrip() extends Component with SetDefaultIO {
             when(open_status.success){
               // get sid
               rSid := open_status.sid
-              // push the first tx req
-//              txMetaFifo.io.push.valid := True
-//              txMetaFifo.io.push.payload := (txLen(15 downto 0) ## open_status.sid ) // rSid will be available in the next cycle
-
-              // set pkgCnt
               pkgCnt := 1
-
               goto(SEND_PKG)
             } otherwise{goto(INIT_CON)}
           }
@@ -195,9 +199,46 @@ case class RoundTrip() extends Component with SetDefaultIO {
             } otherwise{pkgCnt := pkgCnt + 1}
           }
         }
-
     }
   }
+
+  val ap_ctrl = new Area {
+    val fsm = new StateMachine {
+
+      val IDLE = new State with EntryPoint
+      val RUN = new State
+
+      IDLE
+        .whenIsActive{
+          ap_idle := True
+          ap_done := False
+          ap_ready := False
+          when(ap_start){
+            ap_idle := False
+
+            goto(RUN)
+          }
+        }
+
+      RUN
+        .whenIsActive{
+          // sw_rst indicates back to IDLE
+          when(swRst){
+            swRst := False
+            ap_done := True
+            ap_ready := True
+            ap_start := False //
+
+            // reset other fsm
+            server.fsm.goto(server.fsm.INIT)
+            client.fsm.goto(client.fsm.INIT)
+
+            goto(IDLE)
+          }
+        }
+    }
+  }
+
 }
 
 

@@ -9,7 +9,6 @@ import spinal.lib.Stream
 
 import scala.collection._
 
-
 class RoundTripTest extends AnyFunSuite {
 
   def setAxi4LiteReg(dut: Component, bus: AxiLite4, addr: Int, data: Int): Unit ={
@@ -19,23 +18,40 @@ class RoundTripTest extends AnyFunSuite {
       bus.w.strb #= 0xF // strb for 4 Bytes
       bus.aw.valid #= true
       bus.w.valid #= true
-      while (!bus.aw.ready.toBoolean || !bus.w.ready.toBoolean)
-        dut.clockDomain.waitSampling()
+      dut.clockDomain.waitSamplingWhere(bus.aw.ready.toBoolean && bus.w.ready.toBoolean)
       bus.aw.valid #= false
       bus.w.valid #= false
     }
 
     val b = fork {
       bus.b.ready #= true
-      while (!bus.b.valid.toBoolean)
-        dut.clockDomain.waitSampling()
+      dut.clockDomain.waitSamplingWhere(bus.b.valid.toBoolean)
       bus.b.ready #= false
     }
-
     awa.join()
     b.join()
-
   }
+
+  def readAxi4LiteReg(dut: Component, bus: AxiLite4, addr: Int): BigInt ={
+    var data: BigInt = 1
+    val ar = fork{
+      bus.ar.addr #= addr
+      bus.ar.valid #= true
+      dut.clockDomain.waitSamplingWhere(bus.ar.ready.toBoolean)
+      bus.ar.valid #= false
+    }
+
+    val r = fork{
+      bus.r.ready #= true
+      dut.clockDomain.waitSamplingWhere(bus.r.valid.toBoolean)
+      data = bus.r.data.toBigInt
+    }
+    ar.join()
+    r.join()
+    return data
+  }
+
+
 
   def genNotif(sid:BigInt, length:BigInt, ipaddr:BigInt, dstport:BigInt, closed:BigInt): BigInt ={
     val data: BigInt = sid + (length << 16) + (ipaddr << (16+16)) + (dstport << (16+16+32)) + (closed << (16+16+32+16))
@@ -77,21 +93,26 @@ class RoundTripTest extends AnyFunSuite {
 
 
   def round_trip(dut: RoundTrip): Unit ={
+
+    dut.io.net.port_status.valid #= false
+    dut.io.net.notification.valid #= false
+    dut.io.net.rx_meta.valid #= false
+    dut.io.net.rx_data.valid #= false
+    dut.io.net.open_status.valid #= false
+    dut.io.net.tx_status.valid #= false
+    dut.io.control.aw.valid #= false
+    dut.io.control.w.valid #= false
+    dut.io.control.ar.valid #= false
+
     dut.clockDomain.forkStimulus(period = 10)
 
     var f_open_port = false
     var f_open_connect = false
     var f_init = false
 
+
     val init = fork {
-      dut.io.net.port_status.valid #= false
-      dut.io.net.notification.valid #= false
-      dut.io.net.rx_meta.valid #= false
-      dut.io.net.rx_data.valid #= false
-      dut.io.net.open_status.valid #= false
-      dut.io.net.tx_status.valid #= false
-
-
+      f_init = false
       dut.clockDomain.waitSampling(10)
       setAxi4LiteReg(dut, dut.io.control, 0x20, 1) // pkgCounter
       setAxi4LiteReg(dut, dut.io.control, 0x18, 110) // connect ip address
@@ -101,6 +122,7 @@ class RoundTripTest extends AnyFunSuite {
     }
 
     val open_port = fork {
+      f_open_port = false
       dut.clockDomain.waitSamplingWhere(f_init)
       val rd_port = recOnStream(dut, dut.io.net.listen_port).toBigInt
       println(s"[ListenPort]: open port @$rd_port")
@@ -111,8 +133,8 @@ class RoundTripTest extends AnyFunSuite {
 
     val send_notif = fork {
       dut.clockDomain.waitSamplingWhere(f_open_port)
-      var n_notif = 1024
-      while (n_notif > 0){
+      var n_notif = 20
+      while (n_notif > 0) {
         sendOnStream(dut, dut.io.net.notification, genNotif(0, 64, 0, 1, 1)) // 64
         println(s"[Notif] pkg: $n_notif")
         n_notif -= 1
@@ -122,9 +144,9 @@ class RoundTripTest extends AnyFunSuite {
     val rx_process = fork {
       dut.clockDomain.waitSamplingWhere(f_open_port)
       var n = 1
-      while(true) {
+      while (true) {
         // sequential: read_pkg >> rx_meta >> rx_data
-        val rx_len = recOnStream(dut, dut.io.net.read_pkg).toBigInt>>16 // high 16 bits
+        val rx_len = recOnStream(dut, dut.io.net.read_pkg).toBigInt >> 16 // high 16 bits
         val rx_len_pgk = rx_len / 64
         println(s"[RxPkg] rx_len: $rx_len_pgk")
         sendOnStream(dut, dut.io.net.rx_meta, rx_len) // send rx_meta
@@ -140,22 +162,23 @@ class RoundTripTest extends AnyFunSuite {
     }
 
     val open_connection = fork {
+      f_open_connect = false
       val ip_tuple = recOnStream(dut, dut.io.net.open_connection).toBigInt
-      println(s"[OpenConnect]: open connection ip@${ip_tuple&0xFFFFFFFFL}\t port@${ip_tuple>>32}")
+      println(s"[OpenConnect]: open connection ip@${ip_tuple & 0xFFFFFFFFL}\t port@${ip_tuple >> 32}")
       val sid = 8
-      sendOnStream(dut, dut.io.net.open_status, sid + (1<<16))
+      sendOnStream(dut, dut.io.net.open_status, sid + (1 << 16))
       println(s"[OpenStatus]: open_status sent.")
 
       f_open_connect = true
 
       // $finish
-      dut.clockDomain.waitSampling(10000)
+      dut.clockDomain.waitSampling(5000)
     }
 
     val tx_meta_process = fork {
       dut.clockDomain.waitSamplingWhere(f_open_connect)
       var n = 1
-      while(true) {
+      while (true) {
         val tx_meta = recOnStream(dut, dut.io.net.tx_meta).toBigInt
         println(s"[TxMeta]: txLen: ${tx_meta >> 16}\t sid: ${tx_meta & 0xFFFF}")
         sendOnStream(dut, dut.io.net.tx_status, genTxStatus(8, tx_meta & 0xFFFF, 0xFF, 0))
@@ -167,9 +190,9 @@ class RoundTripTest extends AnyFunSuite {
     val tx_data = fork {
       dut.clockDomain.waitSamplingWhere(f_open_connect)
       var n = 1
-      while(true) {
+      while (true) {
         val tx_data = recOnStream(dut, dut.io.net.tx_data).toBigInt
-        println(s"[TxData]: txData: ${tx_data & 0xFFFF}\t kep: ${(tx_data >> 512) & 0xFFFF}\t last: ${(tx_data >> (512+64)) & 0x01}\t pkg idx: $n")
+        println(s"[TxData]: txData: ${tx_data & 0xFFFF}\t kep: ${(tx_data >> 512) & 0xFFFF}\t last: ${(tx_data >> (512 + 64)) & 0x01}\t pkg idx: $n")
         n += 1
       }
     }
@@ -177,6 +200,19 @@ class RoundTripTest extends AnyFunSuite {
     open_port.join()
     send_notif.join()
     open_connection.join()
+
+    val rst = fork {
+      // read cnt registers
+      for (i <- 0 until 7) {
+        println(s"[Reg] counter: ${readAxi4LiteReg(dut, dut.io.control, 36 + i * 4)}")
+      }
+      setAxi4LiteReg(dut, dut.io.control, 0x40, 1) // ap_start
+      dut.clockDomain.waitSampling(10)
+    }
+
+    rst.join()
+
+
   }
 
 
