@@ -27,18 +27,38 @@ trait RenameIO {
 
     for (port <- this.getAllIo) {
       val newName = port.getName()
-        //.replaceAll("(a?[wrb])_(payload_)?", "$1")
+        .replaceAll("(a?[wrb])_(payload_)?", "$1")
 
         // For Axi Stream, raw interface
-//        .replaceAll("_payload$", "_tdata")
-//        .replaceAll("_ready$", "_tready")
-//        .replaceAll("_valid$", "_tvalid")
+        .replaceAll("_payload$", "_tdata")
+        .replaceAll("_payload_data$", "_tdata")
+        .replaceAll("_payload_kep$", "_tkeep")
+        .replaceAll("_payload_last$", "_tlast")
+        .replaceAll("_ready$", "_tready")
+        .replaceAll("_valid$", "_tvalid")
+
+        //
+        .replaceAll("control_", "s_axi_control_")
+        .replaceAll("net_", "")
+
+        .replaceAll("(listen_port)", "m_axis_tcp_$1")
+        .replaceAll("(port_status)", "s_axis_tcp_$1")
+        .replaceAll("(notification)", "s_axis_tcp_$1")
+        .replaceAll("(read_pkg)", "m_axis_tcp_$1")
+        .replaceAll("(rx_meta)", "s_axis_tcp_$1")
+        .replaceAll("(rx_data)", "s_axis_tcp_$1")
+        .replaceAll("(open_connection)", "m_axis_tcp_$1")
+        .replaceAll("(open_status)", "s_axis_tcp_$1")
+        .replaceAll("(close_connection)", "m_axis_tcp_$1")
+        .replaceAll("(tx_meta)", "m_axis_tcp_$1")
+        .replaceAll("(tx_data)", "m_axis_tcp_$1")
+        .replaceAll("(tx_status)", "s_axis_tcp_$1")
 
         // For Axi Stream, Fragment Interface
 //        .replaceAll("_last$", "_tlast")
 //        .replaceAll("_payload_t", "_t")
 //        .replaceAll("_payload_fragment_t", "_t")
-        .replaceAll("_payload_", "_")
+//        .replaceAll("_payload_", "_")
 
       port.setName(newName)
     }

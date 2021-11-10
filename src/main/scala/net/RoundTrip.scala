@@ -11,7 +11,7 @@ import util._
 
 import scala.language.postfixOps
 
-case class RoundTrip() extends Component with SetDefaultIO {
+case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
 
   val io = new Bundle{
     val net = NetIO()
@@ -20,18 +20,7 @@ case class RoundTrip() extends Component with SetDefaultIO {
 
   io.net.setDefault()
 
-  // axilite control registers
-  val ctlreg = new AxiLite4SlaveFactory(io.control)
-  val ap_start = ctlreg.createReadAndWrite(Bool(), 0, 0).init(False)
-  val ap_done = ctlreg.createReadOnly(Bool(), 0, 1).init(False)
-  val ap_idle = ctlreg.createReadOnly(Bool(), 0, 2).init(True)
-  val ap_ready = ctlreg.createReadOnly(Bool(), 0, 3).init(False)
 
-  // net config reg
-  val useConn = ctlreg.createReadAndWrite(UInt(32 bits), 0x10, 0)
-  val useIpAddr = ctlreg.createReadAndWrite(UInt(32 bits), 0x18, 0)
-  val pkgWordCount = ctlreg.createReadAndWrite(UInt(32 bits), 0x20, 0)
-  val swRst = ctlreg.createReadAndWrite(Bool(), 0x40, 0).init(False) // soft reset
 
   val notifCnt = Counter(32 bits, io.net.notification.fire)
   val rxpkgCnt = Counter(32 bits, io.net.read_pkg.fire)
@@ -40,6 +29,21 @@ case class RoundTrip() extends Component with SetDefaultIO {
   val txmetaCnt = Counter(32 bits, io.net.tx_meta.fire)
   val txstatusCnt = Counter(32 bits, io.net.tx_status.fire)
   val txdataCnt = Counter(32 bits, io.net.tx_data.fire)
+
+  // axilite control registers
+  val ctlreg = new AxiLite4SlaveFactory(io.control)
+
+  val ap_start = ctlreg.createReadAndWrite(Bool(), 0, 0).init(False)
+  val ap_done = ctlreg.createReadOnly(Bool(), 0, 1).init(False)
+  val ap_idle = ctlreg.createReadOnly(Bool(), 0, 2).init(True)
+  val ap_ready = ctlreg.createReadOnly(Bool(), 0, 3).init(False)
+
+  // ap_done, clear on read!
+  ctlreg.onRead(0){ap_done.clear()}
+
+  // net config reg
+  val useIpAddr = ctlreg.createReadAndWrite(UInt(32 bits), 0x18, 0)
+  val pkgWordCount = ctlreg.createReadAndWrite(UInt(32 bits), 0x20, 0)
 
   // status Cnt
   ctlreg.readAndWrite(notifCnt, 0x24, 0)
@@ -50,10 +54,14 @@ case class RoundTrip() extends Component with SetDefaultIO {
   ctlreg.readAndWrite(txstatusCnt, 0x38, 0)
   ctlreg.readAndWrite(txdataCnt, 0x3c, 0)
 
+  // soft reset
+  val swRst = ctlreg.createReadAndWrite(Bool(), 0x40, 0).init(False)
+
 
   // rxData >> this >> txData
-  val rxDataFifo = StreamFifo(netData(512).asBits, 512) // several brams
+  val rxDataFifo = StreamFifo(netData(512), 512) // several brams
   rxDataFifo.io.flush := False
+  rxDataFifo.io.pop.ready := False
 
   val server = new Area{
 
@@ -64,9 +72,10 @@ case class RoundTrip() extends Component with SetDefaultIO {
     val notifFifo = StreamFifo(readPkg().asBits, 512) // a sdp bram
     notifFifo.io.flush := False
 
-    notifFifo.io.push.valid <> io.net.notification.valid
-    io.net.notification.ready <> (notifFifo.io.push.ready && rxDataFifo.io.push.ready) // ready to get both notif and rxData
+//    io.net.notification.ready <> (notifFifo.io.push.ready && rxDataFifo.io.push.ready) // ready to get both notif and rxData
     notifFifo.io.push.payload <>  notification.length ## notification.sid
+    io.net.notification.ready <> (notifFifo.io.push.ready && rxDataFifo.io.availability>63) // ready to get both notif and rxDataFifo has enough space
+    notifFifo.io.push.valid <> (io.net.notification.valid && rxDataFifo.io.availability>63)
     notifFifo.io.pop >> io.net.read_pkg
 
     // directly push rx_data to fifo for tx
@@ -123,6 +132,9 @@ case class RoundTrip() extends Component with SetDefaultIO {
     val rSid = Reg(UInt(16 bits)).init(0)
     val pkgCnt = Reg(UInt(16 bits)).init(0)
 
+    val r_tx_status = Reg(Bool()).init(False)
+    val r_tx_status_err = Reg(UInt(2 bits)).init(0)
+
     // cast
     val open_status = io.net.open_status.payload.toDataType(openStatus())
     val tx_status = io.net.tx_status.payload.toDataType(txStatus())
@@ -136,8 +148,6 @@ case class RoundTrip() extends Component with SetDefaultIO {
     txMetaFifo.io.push.payload := 0
 
     val txLen = pkgWordCount * 64
-    //
-    rxDataFifo.io.pop.continueWhen(io.net.tx_status.fire && tx_status.error===0) >> io.net.tx_data
 
     val fsm = new StateMachine {
 
@@ -167,11 +177,18 @@ case class RoundTrip() extends Component with SetDefaultIO {
       WAIT_CON
         .whenIsActive{
           io.net.open_status.ready := True
+
+          txMetaFifo.io.push.payload := (txLen(15 downto 0) ## open_status.sid)
+
           when(io.net.open_status.fire){
             when(open_status.success){
               // get sid
               rSid := open_status.sid
+
+              // push the first txMeta, fifo is always available
+              txMetaFifo.io.push.valid := True
               pkgCnt := 1
+
               goto(SEND_PKG)
             } otherwise{goto(INIT_CON)}
           }
@@ -184,19 +201,37 @@ case class RoundTrip() extends Component with SetDefaultIO {
           io.net.tx_status.ready := True
 
           when(io.net.tx_status.fire){
+            r_tx_status := True
+            r_tx_status_err := tx_status.error
+
             // lose connection
             when(tx_status.error===1){goto(INIT_CON)} // connection lost
             when(tx_status.error===2){txMetaFifo.io.push.valid := True} // send tx_meta again
           }
 
-          // fixme: now it's the logic ONLY support pkgWordCount=1 (tx_status.fire)
 
-          when(rxDataFifo.io.push.fire){
+          // pkgCnt === 1 must wait for tx_stats back
+          rxDataFifo.io.pop.continueWhen(r_tx_status && r_tx_status_err===0) >> io.net.tx_data
+//          when(pkgCnt===1){
+//            rxDataFifo.io.pop.continueWhen(io.net.tx_status.fire && tx_status.error===0) >> io.net.tx_data
+//          } otherwise{
+//            rxDataFifo.io.pop >> io.net.tx_data
+//          }
+
+          when(rxDataFifo.io.pop.fire){
             // the last pkg
             when(pkgCnt === pkgWordCount){
               pkgCnt := 1
               txMetaFifo.io.push.valid := True // send tx_meta for the next pkg
+              // clear
+              r_tx_status.clear()
+              r_tx_status_err.clearAll()
             } otherwise{pkgCnt := pkgCnt + 1}
+          }
+
+          when(swRst){
+            io.net.close_connection.valid := True
+            io.net.close_connection.payload := rSid
           }
         }
     }
@@ -211,11 +246,9 @@ case class RoundTrip() extends Component with SetDefaultIO {
       IDLE
         .whenIsActive{
           ap_idle := True
-          ap_done := False
           ap_ready := False
           when(ap_start){
             ap_idle := False
-
             goto(RUN)
           }
         }
@@ -223,9 +256,10 @@ case class RoundTrip() extends Component with SetDefaultIO {
       RUN
         .whenIsActive{
           // sw_rst indicates back to IDLE
+
           when(swRst){
             swRst := False
-            ap_done := True
+            ap_done := True // when swRst is H, set ap_done to H; ap_done is cleanOnRead
             ap_ready := True
             ap_start := False //
 
@@ -239,6 +273,17 @@ case class RoundTrip() extends Component with SetDefaultIO {
     }
   }
 
+}
+
+
+object RoundTripMain {
+  def main(args: Array[String]): Unit = {
+    SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog {
+      val top = RoundTrip()
+      top.renameIO()
+      top
+    }
+  }
 }
 
 

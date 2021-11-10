@@ -57,18 +57,18 @@ case class NetIO() extends Bundle with SetDefaultIO {
   val notification = slave Stream notif().asBits
   val read_pkg = master Stream readPkg().asBits
   val rx_meta = slave Stream UInt(16 bits).asBits // length
-  val rx_data = slave Stream netData(512).asBits
+  val rx_data = slave Stream netData(512)
 
   val open_connection = master Stream ipTuple().asBits
   val open_status = slave Stream openStatus().asBits
   val close_connection = master Stream UInt(16 bits)
 
   val tx_meta = master Stream txMeta().asBits // tx data request
-  val tx_data = master Stream netData(512).asBits
+  val tx_data = master Stream netData(512)
   val tx_status = slave Stream txStatus().asBits // tx data resp
 
   def setDefault(): Unit ={
-    for (stream <- List(listen_port, port_status, rx_meta, open_connection, open_status, close_connection, tx_status))
+    for (stream <- List(listen_port, port_status, rx_meta, open_connection, open_status, close_connection, tx_status, tx_data))
       setDefStream(stream)
   }
 
