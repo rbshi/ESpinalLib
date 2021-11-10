@@ -212,20 +212,21 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
           io.net.tx_status.ready := True
 
           when(io.net.tx_status.fire){
-//            r_tx_status := True
-//            r_tx_status_err := tx_status.error
+            r_tx_status := True
+            r_tx_status_err := tx_status.error
 
             // lose connection
             when(tx_status.error===1){goto(INIT_CON)} // connection lost
             when(tx_status.error===2){txMetaFifo.io.push.valid := True} // send tx_meta again
           }
 
-//          // pkgCnt === 1 must wait for tx_stats back
-//          rxDataFifo.io.pop.continueWhen(r_tx_status && r_tx_status_err===0) >> io.net.tx_data
-          when(pkgCnt===1){
-            rxDataFifo.io.pop.continueWhen(io.net.tx_status.fire && tx_status.error===0) >> io.net.tx_data
-          } otherwise{
-            rxDataFifo.io.pop >> io.net.tx_data
+
+          when(r_tx_status && r_tx_status_err===0){
+            rxDataFifo.io.pop.valid <> io.net.tx_data.valid
+            rxDataFifo.io.pop.ready <> io.net.tx_data.ready
+            io.net.tx_data.data <> rxDataFifo.io.pop.data
+            io.net.tx_data.kep <> rxDataFifo.io.pop.kep
+            io.net.tx_data.last <> (pkgCnt === pkgWordCount) // BUG!
           }
 
           when(rxDataFifo.io.pop.fire){
@@ -233,8 +234,8 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
             when(pkgCnt === pkgWordCount){
               pkgCnt := 1
               txMetaFifo.io.push.valid := True // send tx_meta for the next pkg
-//              r_tx_status.clear()
-//              r_tx_status_err.clearAll()
+              r_tx_status.clear()
+              r_tx_status_err.clearAll()
             } otherwise{pkgCnt := pkgCnt + 1}
           }
 

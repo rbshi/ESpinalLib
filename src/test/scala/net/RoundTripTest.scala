@@ -113,6 +113,8 @@ class RoundTripTest extends AnyFunSuite {
     dut.io.control.w.valid #= false
     dut.io.control.ar.valid #= false
 
+    dut.io.net.listen_port.ready #= false
+
     dut.clockDomain.forkStimulus(period = 10)
 
     var f_open_port = false
@@ -123,7 +125,7 @@ class RoundTripTest extends AnyFunSuite {
     val init = fork {
       f_init = false
       dut.clockDomain.waitSampling(10)
-      setAxi4LiteReg(dut, dut.io.control, 0x20, 4) // pkgCounter
+      setAxi4LiteReg(dut, dut.io.control, 0x20, 1) // pkgCounter
       setAxi4LiteReg(dut, dut.io.control, 0x18, 110) // connect ip address
       setAxi4LiteReg(dut, dut.io.control, 0x00, 1) // ap_start
       f_init = true
