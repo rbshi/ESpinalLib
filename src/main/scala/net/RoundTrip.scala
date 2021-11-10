@@ -152,7 +152,7 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
     val fsm = new StateMachine {
 
       val INIT = new State with EntryPoint
-      val INIT_CON, WAIT_CON, SEND_PKG = new State
+      val INIT_CON, WAIT_CON, WAIT_PKG, SEND_PKG = new State
 
       INIT
         .whenIsActive{
@@ -185,12 +185,23 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
               // get sid
               rSid := open_status.sid
 
-              // push the first txMeta, fifo is always available
-              txMetaFifo.io.push.valid := True
-              pkgCnt := 1
-
-              goto(SEND_PKG)
+              goto(WAIT_PKG)
             } otherwise{goto(INIT_CON)}
+          }
+        }
+
+      // wait the first package
+      WAIT_PKG
+        .whenIsActive{
+
+          // BUG!
+          txMetaFifo.io.push.payload := (txLen(15 downto 0) ## rSid)
+
+          when(rxDataFifo.io.occupancy>0 || rxDataFifo.io.push.fire){
+            // push the first txMeta, fifo is always available
+            txMetaFifo.io.push.valid := True
+            pkgCnt := 1
+            goto(SEND_PKG)
           }
         }
 
@@ -201,31 +212,29 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
           io.net.tx_status.ready := True
 
           when(io.net.tx_status.fire){
-            r_tx_status := True
-            r_tx_status_err := tx_status.error
+//            r_tx_status := True
+//            r_tx_status_err := tx_status.error
 
             // lose connection
             when(tx_status.error===1){goto(INIT_CON)} // connection lost
             when(tx_status.error===2){txMetaFifo.io.push.valid := True} // send tx_meta again
           }
 
-
-          // pkgCnt === 1 must wait for tx_stats back
-          rxDataFifo.io.pop.continueWhen(r_tx_status && r_tx_status_err===0) >> io.net.tx_data
-//          when(pkgCnt===1){
-//            rxDataFifo.io.pop.continueWhen(io.net.tx_status.fire && tx_status.error===0) >> io.net.tx_data
-//          } otherwise{
-//            rxDataFifo.io.pop >> io.net.tx_data
-//          }
+//          // pkgCnt === 1 must wait for tx_stats back
+//          rxDataFifo.io.pop.continueWhen(r_tx_status && r_tx_status_err===0) >> io.net.tx_data
+          when(pkgCnt===1){
+            rxDataFifo.io.pop.continueWhen(io.net.tx_status.fire && tx_status.error===0) >> io.net.tx_data
+          } otherwise{
+            rxDataFifo.io.pop >> io.net.tx_data
+          }
 
           when(rxDataFifo.io.pop.fire){
             // the last pkg
             when(pkgCnt === pkgWordCount){
               pkgCnt := 1
               txMetaFifo.io.push.valid := True // send tx_meta for the next pkg
-              // clear
-              r_tx_status.clear()
-              r_tx_status_err.clearAll()
+//              r_tx_status.clear()
+//              r_tx_status_err.clearAll()
             } otherwise{pkgCnt := pkgCnt + 1}
           }
 

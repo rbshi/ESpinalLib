@@ -133,6 +133,9 @@ class RoundTripTest extends AnyFunSuite {
     val open_port = fork {
       f_open_port = false
 //      dut.clockDomain.waitSamplingWhere(f_init)
+      // delay send
+      dut.clockDomain.waitSampling(1024)
+
       val rd_port = recOnStream(dut, dut.io.net.listen_port).toBigInt
       println(s"[ListenPort]: open port @$rd_port")
       sendOnStream(dut, dut.io.net.port_status, true)
@@ -142,8 +145,6 @@ class RoundTripTest extends AnyFunSuite {
 
     val send_notif = fork {
       dut.clockDomain.waitSamplingWhere(f_open_port)
-      // delay send
-      dut.clockDomain.waitSampling(4096)
       var n_notif = 1024
       while (n_notif > 0) {
         sendOnStream(dut, dut.io.net.notification, genNotif(0, 64, 0, 1, 1)) // 64
@@ -170,6 +171,10 @@ class RoundTripTest extends AnyFunSuite {
         n += 1
       }
     }
+
+
+
+
 
     val open_connection = fork {
       f_open_connect = false
