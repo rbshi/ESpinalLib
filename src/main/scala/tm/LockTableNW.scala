@@ -48,6 +48,14 @@ case class LockReq(conf: LockTableConfig) extends Bundle{
   val lock_release = Bool() // get, release
   val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
   //  val txn_ts
+  def setDefault() = {
+    txn_id := 0
+    lock_addr := 0
+    lock_type := False
+    lock_upgrade := False
+    lock_release := False
+    lock_idx := 0
+  }
 }
 
 case class LockResp(conf: LockTableConfig) extends Bundle{
@@ -57,6 +65,15 @@ case class LockResp(conf: LockTableConfig) extends Bundle{
   val lock_type = Bool() // for test
   val lock_upgrade = Bool() // normal, upgrade
   val lock_idx = UInt(8 bits)
+
+  def setDefault() = {
+    txn_id := 0
+    lock_addr := 0
+    lock_type := False
+    lock_upgrade := False
+    resp_type := LockRespType.abort
+    lock_idx := 0
+  }
 }
 
 class LockTableIO(conf: LockTableConfig) extends Bundle{
@@ -66,12 +83,7 @@ class LockTableIO(conf: LockTableConfig) extends Bundle{
   def setDefault() = {
     lock_req.ready := False
     lock_resp.valid := False
-    lock_resp.txn_id := 0
-    lock_resp.lock_addr := 0
-    lock_resp.lock_type := False
-    lock_resp.lock_upgrade := False
-    lock_resp.resp_type := LockRespType.abort
-    lock_resp.lock_idx := 0
+    lock_resp.setDefault()
   }
 }
 
@@ -107,7 +119,11 @@ class LockTable(conf: LockTableConfig) extends Component {
         ht.io.ht_res_if.ready := True
 
         io.lock_req.ready := ht.io.ht_cmd_if.ready
-        ht.io.sendCmd(req.lock_addr, (io.lock_req.lock_type ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
+
+        when(io.lock_req.valid){
+          ht.io.sendCmd(req.lock_addr, (io.lock_req.lock_type ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
+        }
+
         when(io.lock_req.fire){
           goto(INSET_RESP)
         }

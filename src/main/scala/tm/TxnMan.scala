@@ -24,17 +24,13 @@ case class OpReq(conf: LockTableConfig) extends Bundle {
 
 case class OpResp(conf: LockTableConfig) extends Bundle {
   val data = UInt(64 bits) // FIXME word size
-  val mode = Bool() // r/w
-  val status = Bool() // 0: continue 1: restart
 
   def setDefault(): Unit = {
     data := 0
-    mode := False
-    status := False
   }
 }
 
-case class TxnManIO(conf: LockTableConfig) extends Bundle {
+case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
   // to operator
   val op_req = slave Stream OpReq(conf)
   val op_resp = master Stream OpResp(conf)
@@ -44,26 +40,15 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle {
   val lt_resp = slave Stream LockResp(conf)
 
   // to axi
-  val axi = master(Axi4(Axi4Config(
-    addressWidth = 32,
-    dataWidth = 64,
-    idWidth = 1,
-    useStrb = false,
-    useBurst = false,
-    useId = true,
-    useLock = false,
-    useRegion = false,
-    useCache = false,
-    useProt = false,
-    useQos = false,
-    useLen = true
-  )))
+  val axi = master(Axi4(axiConf))
 
+  val txn_abort = out Bool()
   val txn_end_test = out Bool()
 
   def setDefault() = {
     lt_req.valid := False
-    lt_req.txn_id := 0
+//    lt_req.txn_id := 0
+    lt_resp.ready := False
 
     op_req.ready := False
     op_resp.valid := False
@@ -88,16 +73,16 @@ case class TxnManIO(conf: LockTableConfig) extends Bundle {
   }
 }
 
-class TxnMan(conf: LockTableConfig) extends Component {
-  val io = TxnManIO(conf)
+class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends Component {
+  val io = TxnManIO(conf, axiConf)
   io.setDefault()
 
   val lk_req_cnt, lk_resp_cnt, lk_req_wr_cnt, lk_resp_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt = Reg(UInt(8 bits)).init(0)
   val r_abort, r_to_commit, r_to_cleanup = RegInit(False)
+  io.txn_abort := r_abort
 
-  val mem = Mem(OpReq(conf), 256)
   val txn_wr_mem = Mem(OpReq(conf), 256)
-  // local lock record (for release) wid: addr + mode + t/f
+  // local lock record (for release) word: addr + mode + t/f
   val txn_lt = Mem(Bits(conf.unitAddrWidth + 1 + 1 bits), 256)
 
 
@@ -116,7 +101,13 @@ class TxnMan(conf: LockTableConfig) extends Component {
     }
 
     NORMAL.whenIsActive {
-      io.op_req.ready := (io.lt_req.ready && io.axi.ar.ready)
+      when(io.op_req.txn_sig === 2){ // txn_end signal
+        io.op_req.ready := True
+      } otherwise{
+        io.op_req.ready := io.lt_req.ready // op_req fire till lt_req.ready by round-robin
+      }
+
+      // receive txn_end signal
       when(io.op_req.fire && io.op_req.txn_sig === 2) {
         // set flag to txn_commit & txn_cleanup
         r_to_commit := True
@@ -141,57 +132,78 @@ class TxnMan(conf: LockTableConfig) extends Component {
     io.lt_req.lock_upgrade := io.op_req.upgrade
     io.lt_req.lock_release := False
     io.lt_req.lock_idx := lk_req_cnt
+    io.lt_req.txn_id := txnManID
+
+
+    when(io.op_req.txn_sig===0){
+      // bypass the valid
+      io.lt_req.valid := io.op_req.valid
+    }
+
     // axi
     io.axi.ar.addr := io.op_req.addr
 
-    when(io.op_req.txn_sig === 0) { // normal mode
-      // lt_req axi.ar must be ready when io.op_req.fire
-      when(io.op_req.fire) {
-        lk_req_cnt := lk_req_cnt + 1
-        io.lt_req.valid := True
-        switch(io.op_req.mode) {
-          is(False) { // read op: issue axi req & lt_req
-            io.axi.ar.valid := True
+    when(io.op_req.fire && io.op_req.txn_sig === 0) { // normal mode
+      lk_req_cnt := lk_req_cnt + 1
+      when(io.op_req.mode) {
+        // write op: issue txn_wr_mem & lt_req_wr_cnt++
+        txn_wr_mem.write(lk_req_wr_cnt, io.op_req)
+        lk_req_wr_cnt := lk_req_wr_cnt + 1
+      }
+    }
+  }
+
+  val lt_resp = new StateMachine {
+
+    val r_lock_addr = RegNextWhen(io.lt_resp.lock_addr, io.lt_resp.fire)
+
+    val WAIT_RESP = new State with EntryPoint
+    val AXI_RD_REQ = new State
+
+    WAIT_RESP.whenIsActive {
+      io.lt_resp.ready := True
+      when(io.lt_resp.fire) {
+        when(io.lt_resp.resp_type === LockRespType.grant) {
+          // write to local lock record (lt_resp may arrive out of order)
+          txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
+          lk_resp_cnt := lk_resp_cnt + 1
+          // when the ex lock is obtained
+          when(io.lt_resp.lock_type) {
+            lk_resp_wr_cnt := lk_resp_wr_cnt + 1
+          } otherwise {
+
+            goto(AXI_RD_REQ)
           }
-          is(True) { // write op: issue txn_wr_mem & lt_req
-            txn_wr_mem.write(lk_req_wr_cnt, io.op_req)
-            lk_req_wr_cnt := lk_req_wr_cnt + 1
+        }
+
+        when(io.lt_resp.resp_type === LockRespType.abort) {
+          r_abort := True
+          // fixme: simplify
+          lk_resp_cnt := lk_resp_cnt + 1
+          when(io.lt_resp.lock_type) {
+            lk_resp_wr_cnt := lk_resp_wr_cnt + 1
           }
         }
       }
     }
-  }
 
-  val lt_resp = new Area {
-    io.lt_resp.ready := True
-    when(io.lt_resp.fire) {
-      when(io.lt_resp.resp_type === LockRespType.grant) {
-        // write to local lock record (lt_resp may arrive out of order)
-        txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
-        lk_resp_cnt := lk_resp_cnt + 1
-        when(io.lt_resp.lock_type){lk_resp_wr_cnt := lk_resp_wr_cnt + 1}
-      }
-      when(io.lt_resp.resp_type === LockRespType.abort) {
-        r_abort := True
-        // fixme: simplify
-        lk_resp_cnt := lk_resp_cnt + 1
-        when(io.lt_resp.lock_type){lk_resp_wr_cnt := lk_resp_wr_cnt + 1}
-      }
+    AXI_RD_REQ.whenIsActive {
+      // send read cmd
+      // FIXME: lt_resp may be ooo, so is the rd address
+      io.axi.ar.addr := r_lock_addr
+      io.axi.ar.valid := True
+      when(io.axi.ar.fire)(goto(WAIT_RESP))
     }
+
   }
 
   val axi_resp = new Area {
     io.axi.r.ready := True
-
     io.op_resp.data := io.axi.r.data.asUInt
-    io.op_resp.mode := False // read
-    io.op_resp.status := r_abort // once there's abort lock, send restart
-
     when(io.axi.r.fire) {
       // assume op_resp is always ready
       io.op_resp.valid := True
     }
-
     // write resp
     io.axi.b.ready := True
     when(io.axi.b.fire) {

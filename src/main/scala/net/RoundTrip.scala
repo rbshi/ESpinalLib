@@ -63,6 +63,10 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
   rxDataFifo.io.flush := False
   rxDataFifo.io.pop.ready := False
 
+
+  val rSid = Reg(UInt(16 bits)).init(0)
+
+
   val server = new Area{
 
     // type cast
@@ -116,7 +120,8 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
       READ_PKG
         .whenIsActive{
           io.net.rx_meta.ready := True
-          io.net.rx_data.ready := True
+          // io.net.rx_data.ready := True // maybe bug.
+          when(io.net.notification.fire){rSid := notification.sid}
         }
     }
   }
@@ -129,7 +134,6 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
     val ip_tuple = new ipTuple
     ip_tuple.port := 5002
     ip_tuple.ipaddr := useIpAddr
-    val rSid = Reg(UInt(16 bits)).init(0)
     val pkgCnt = Reg(UInt(16 bits)).init(0)
 
     val r_tx_status = Reg(Bool()).init(False)
@@ -152,7 +156,7 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
     val fsm = new StateMachine {
 
       val INIT = new State with EntryPoint
-      val INIT_CON, WAIT_CON, WAIT_PKG, SEND_PKG = new State
+      val INIT_CON, WAIT_PKG, SEND_PKG = new State
 
       INIT
         .whenIsActive{
@@ -162,38 +166,37 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
           txdataCnt.clear()
 
           pkgCnt := 0
-          when(ap_start){goto{INIT_CON}}
+          when(ap_start){goto{WAIT_PKG}}
         }
 
-      // init connection: open_connection,
-      INIT_CON
-        .whenIsActive{
-          io.net.open_connection.payload := ip_tuple.asBits
-          io.net.open_connection.valid := True
-          when(io.net.open_connection.fire){goto(WAIT_CON)}
-        }
-
-      // wait connection: check open_status, if success, tx_metadata
-      WAIT_CON
-        .whenIsActive{
-          io.net.open_status.ready := True
-
-          txMetaFifo.io.push.payload := (txLen(15 downto 0) ## open_status.sid)
-
-          when(io.net.open_status.fire){
-            when(open_status.success){
-              // get sid
-              rSid := open_status.sid
-
-              goto(WAIT_PKG)
-            } otherwise{goto(INIT_CON)}
-          }
-        }
+//      // init connection: open_connection,
+//      INIT_CON
+//        .whenIsActive{
+//          io.net.open_connection.payload := ip_tuple.asBits
+//          io.net.open_connection.valid := True
+//          when(io.net.open_connection.fire){goto(WAIT_CON)}
+//        }
+//
+//      // wait connection: check open_status, if success, tx_metadata
+//      WAIT_CON
+//        .whenIsActive{
+//          io.net.open_status.ready := True
+//
+//          txMetaFifo.io.push.payload := (txLen(15 downto 0) ## open_status.sid)
+//
+//          when(io.net.open_status.fire){
+//            when(open_status.success){
+//              // get sid
+//              rSid := open_status.sid
+//
+//              goto(WAIT_PKG)
+//            } otherwise{goto(INIT_CON)}
+//          }
+//        }
 
       // wait the first package
       WAIT_PKG
         .whenIsActive{
-
           // BUG!
           txMetaFifo.io.push.payload := (txLen(15 downto 0) ## rSid)
 
@@ -216,7 +219,7 @@ case class RoundTrip() extends Component with SetDefaultIO with RenameIO {
             r_tx_status_err := tx_status.error
 
             // lose connection
-            when(tx_status.error===1){goto(INIT_CON)} // connection lost
+            when(tx_status.error===1){goto(INIT)} // connection lost
             when(tx_status.error===2){txMetaFifo.io.push.valid := True} // send tx_meta again
           }
 

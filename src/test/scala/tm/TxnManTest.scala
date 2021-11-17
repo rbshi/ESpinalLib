@@ -14,7 +14,23 @@ import spinal.lib.{master, slave}
 
 // a top level must be made for simulation, fixme: axi4 config
 class TxnManTop(conf: LockTableConfig) extends Component{
-  val txn_man = new TxnMan(conf)
+
+  val axiConfig = Axi4Config(
+    addressWidth = 32,
+    dataWidth    = 64,
+    idWidth = 6,
+    useStrb = false,
+    useBurst = false,
+    useId = true,
+    useLock      = false,
+    useRegion    = false,
+    useCache     = false,
+    useProt      = false,
+    useQos       = false,
+    useLen       = true
+  )
+
+  val txn_man = new TxnMan(conf, axiConfig, 0)
   val lt = new LockTable(conf)
 
   val io = new Bundle{
@@ -67,7 +83,7 @@ class TxnManTest extends AnyFunSuite {
   def recResp(dut: TxnManTop): Unit ={
     dut.io.op_resp.ready #= true
     dut.clockDomain.waitSamplingWhere(dut.io.op_resp.valid.toBoolean && dut.io.op_resp.ready.toBoolean)
-    println(s"[Resp] Data: ${dut.io.op_resp.data.toBigInt}\t Mode: ${dut.io.op_resp.mode.toBoolean}\t Status: ${dut.io.op_resp.status.toBoolean}")
+    println(s"[Resp] Data: ${dut.io.op_resp.data.toBigInt}")
   }
 
   def axiMonitor(dut: TxnManTop): Unit = {
@@ -109,8 +125,8 @@ class TxnManTest extends AnyFunSuite {
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads=128,
       maxOutstandingWrites=128,
-      readResponseDelay=30,
-      writeResponseDelay=30,
+      readResponseDelay=10,
+      writeResponseDelay=10,
       useCustom = true
     ))
     axi_mem.start()
