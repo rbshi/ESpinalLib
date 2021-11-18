@@ -118,8 +118,8 @@ class TxnManGrpTest extends AnyFunSuite {
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads=128,
       maxOutstandingWrites=128,
-      readResponseDelay=30,
-      writeResponseDelay=30,
+      readResponseDelay=10,
+      writeResponseDelay=10,
       useCustom = true
     ))
 
@@ -139,6 +139,10 @@ class TxnManGrpTest extends AnyFunSuite {
       for (k <- 0 until 4){
         arrayTxn(i).enqueue(OpReqSim(k, i+1, false, false, 0)) // read
       }
+      for (k <- 0 until 4){
+//        arrayTxn(i).enqueue(OpReqSim(i*8+4+k, i+1, true, false, 0)) // write
+        arrayTxn(i).enqueue(OpReqSim(4+k, i+1, true, false, 0)) // write
+      }
       arrayTxn(i).enqueue(OpReqSim(0, 0, false, false, 2)) // txn_end
     }
 
@@ -153,6 +157,8 @@ class TxnManGrpTest extends AnyFunSuite {
         dut.clockDomain.waitSampling(1000)
       }
     }
+
+
 
     for (i <- 0 until 2) {
       fork {

@@ -170,7 +170,7 @@ class TxnManTest extends AnyFunSuite {
     val ltMon = fork {ltMonitor(dut)}
 
     val waitEnd = fork {
-      while (!dut.txn_man.io.txn_end_test.toBoolean)
+      while (!dut.txn_man.io.sig_txn_end.toBoolean)
         dut.clockDomain.waitSampling()
       println("[TxnEnd] cleanup finished")
     }
@@ -183,7 +183,7 @@ class TxnManTest extends AnyFunSuite {
   test("one_operator") {
     SimConfig.withWave.compile {
       val dut = new TxnManTop(LTConfig)
-      dut.txn_man.io.txn_end_test.simPublic()
+      dut.txn_man.io.sig_txn_end.simPublic()
       dut.lt.io.simPublic()
       dut
     }.doSim("one_operator", 99)(one_operator)

@@ -33,7 +33,7 @@ case class OpResp(conf: LockTableConfig) extends Bundle {
 case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
   // to operator
   val op_req = slave Stream OpReq(conf)
-  val op_resp = master Stream OpResp(conf)
+  val op_resp = master Stream OpResp(conf) // read data only
 
   // to lock table
   val lt_req = master Stream LockReq(conf)
@@ -42,8 +42,8 @@ case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
   // to axi
   val axi = master(Axi4(axiConf))
 
-  val txn_abort = out Bool()
-  val txn_end_test = out Bool()
+  val sig_txn_abort = out Bool()
+  val sig_txn_end = out Bool()
 
   def setDefault() = {
     lt_req.valid := False
@@ -66,10 +66,10 @@ case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
     //    axi.readRsp.ready := True
     //    axi.writeRsp.ready := True
 //    axi.writeData.data := 0
-    axi.writeData.last := False
+    axi.writeData.last := True
 //    axi.writeData.valid := False
 
-    txn_end_test := False
+    sig_txn_end := False
   }
 }
 
@@ -77,9 +77,12 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
   val io = TxnManIO(conf, axiConf)
   io.setDefault()
 
-  val lk_req_cnt, lk_resp_cnt, lk_req_wr_cnt, lk_resp_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt = Reg(UInt(8 bits)).init(0)
+  val lk_req_cnt, lk_resp_cnt, lk_hold_cnt, lk_req_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt, clean_resp_cnt = Reg(UInt(8 bits)).init(0)
+  val cntList = List(lk_req_cnt, lk_resp_cnt, lk_hold_cnt, lk_req_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt, clean_resp_cnt)
+
+
   val r_abort, r_to_commit, r_to_cleanup = RegInit(False)
-  io.txn_abort := r_abort
+  io.sig_txn_abort := r_abort
 
   val txn_wr_mem = Mem(OpReq(conf), 256)
   // local lock record (for release) word: addr + mode + t/f
@@ -94,6 +97,8 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       io.op_req.ready := True
 
       // init reg
+      cntList.map(_.clearAll())
+      r_abort.clear()
 
       when(io.op_req.fire && io.op_req.txn_sig === 1) {
         goto(NORMAL)
@@ -101,7 +106,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     }
 
     NORMAL.whenIsActive {
-      when(io.op_req.txn_sig === 2){ // txn_end signal
+      when(io.op_req.txn_sig === 2 || r_abort){ // txn_end signal, if r_abort, op_req will be ignored
         io.op_req.ready := True
       } otherwise{
         io.op_req.ready := io.lt_req.ready // op_req fire till lt_req.ready by round-robin
@@ -110,7 +115,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       // receive txn_end signal
       when(io.op_req.fire && io.op_req.txn_sig === 2) {
         // set flag to txn_commit & txn_cleanup
-        r_to_commit := True
+        when(~r_abort){r_to_commit := True}
         r_to_cleanup := True
         goto(TXN_END)
       } // receive the txn_end
@@ -119,7 +124,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     TXN_END.whenIsActive {
       io.op_req.ready := False
       when(!r_to_commit && !r_to_cleanup) {
-        io.txn_end_test := True
+        io.sig_txn_end := True
         goto(TXN_START)
       } // finish txn commit / abort
     }
@@ -135,7 +140,8 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     io.lt_req.txn_id := txnManID
 
 
-    when(io.op_req.txn_sig===0){
+    // if abort, ignore the op_req
+    when(io.op_req.txn_sig===0 && ~r_abort){
       // bypass the valid
       io.lt_req.valid := io.op_req.valid
     }
@@ -143,7 +149,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     // axi
     io.axi.ar.addr := io.op_req.addr
 
-    when(io.op_req.fire && io.op_req.txn_sig === 0) { // normal mode
+    when(io.lt_req.fire && io.op_req.txn_sig === 0) { // normal mode
       lk_req_cnt := lk_req_cnt + 1
       when(io.op_req.mode) {
         // write op: issue txn_wr_mem & lt_req_wr_cnt++
@@ -152,6 +158,8 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       }
     }
   }
+
+
 
   val lt_resp = new StateMachine {
 
@@ -167,23 +175,20 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
           // write to local lock record (lt_resp may arrive out of order)
           txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
           lk_resp_cnt := lk_resp_cnt + 1
-          // when the ex lock is obtained
-          when(io.lt_resp.lock_type) {
-            lk_resp_wr_cnt := lk_resp_wr_cnt + 1
-          } otherwise {
-
-            goto(AXI_RD_REQ)
-          }
+          lk_hold_cnt := lk_hold_cnt + 1
+          // when the sh lock is obtained, send axi read cmd
+          when(~io.lt_resp.lock_type) {goto(AXI_RD_REQ)}
         }
 
         when(io.lt_resp.resp_type === LockRespType.abort) {
           r_abort := True
-          // fixme: simplify
           lk_resp_cnt := lk_resp_cnt + 1
-          when(io.lt_resp.lock_type) {
-            lk_resp_wr_cnt := lk_resp_wr_cnt + 1
-          }
         }
+
+        when(io.lt_resp.resp_type === LockRespType.release) {
+          clean_resp_cnt := clean_resp_cnt + 1
+        }
+
       }
     }
 
@@ -218,15 +223,26 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     mem_rdcmd.payload := cmt_req_cnt
     mem_rdcmd.valid := False
     val mem_rddata = txn_wr_mem.streamReadSync(mem_rdcmd)
+
     // fork mem_rddata to two stream (axi.aw, axi.w)
-    val (mem1, mem2) = StreamFork2(mem_rddata, synchronous = true)
-    // mem_rddata.ready := io.axi.aw.ready && io.axi.w.ready
-    io.axi.aw.addr := mem1.addr
-    io.axi.aw.valid := mem1.valid
-    io.axi.w.data := mem2.data.asBits
-    io.axi.w.valid := mem2.valid
-    io.axi.aw.ready <> mem1.ready
-    io.axi.w.ready <> mem2.ready
+//    val (mem1, mem2) = StreamFork2(mem_rddata, synchronous = true)
+//    // mem_rddata.ready := io.axi.aw.ready && io.axi.w.ready
+//    io.axi.aw.addr := mem1.addr
+//    io.axi.aw.valid := mem1.valid
+//    io.axi.w.data := mem2.data.asBits
+//    io.axi.w.valid := mem2.valid
+//    io.axi.aw.ready <> mem1.ready
+//    io.axi.w.ready <> mem2.ready
+
+
+    // assume aw, w is ready in the same cycle with axiArbiter
+    io.axi.aw.addr := mem_rddata.addr
+    io.axi.aw.valid := mem_rddata.valid
+    io.axi.w.data := mem_rddata.data.asBits
+    io.axi.w.valid := mem_rddata.valid
+    io.axi.aw.ready <> mem_rddata.ready
+//    io.axi.w.ready <> mem_rddata.ready
+
 
     when(req_rec.isActive(req_rec.TXN_END)) {
 
@@ -237,11 +253,12 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
         cmt_req_cnt := cmt_req_cnt + 1
       }
 
-      when(cmt_req_cnt === lk_req_wr_cnt) {
+      when(cmt_resp_cnt === lk_req_wr_cnt) {
         r_to_commit := False
       }
     }
   }
+
 
   // release locks
   val txn_cleanup = new Area {
@@ -261,8 +278,12 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       io.lt_req.lock_idx := clean_req_cnt
       io.lt_req.valid := mem_rddata.valid && mem_rddata.payload(0) // all txn_lt entries should be valid
 
-      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && (clean_req_wr_cnt < cmt_resp_cnt || cmt_resp_cnt === 0 || clean_req_wr_cnt === lk_req_wr_cnt) && clean_req_cnt < lk_req_cnt) {
-        //      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && (clean_req_wr_cnt <= cmt_resp_cnt)  && clean_req_cnt < lk_req_cnt){
+      // 1. after receive the resp of all lk_req
+      // 2. r_to_cleanup
+      // 3. (~r_to_commit, no commit) || clean_req_wr_cnt < cmt_resp_cnt || clean_req_wr_cnt === lk_req_wr_cnt (all req_wr has been released)
+      // 4. clean_req_cnt < lk_hold_cnt
+      // FIXME: mem_rdcmd is 1 clcyle ahead of mem_rddata, so may issue one more wr_lock release.
+      when(lk_req_cnt === lk_resp_cnt && r_to_cleanup && ( ~r_to_commit || clean_req_wr_cnt < cmt_resp_cnt || clean_req_wr_cnt === lk_req_wr_cnt) && clean_req_cnt < lk_hold_cnt) {
         mem_rdcmd.valid := True
       }
 
@@ -274,8 +295,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
         when(mem_rddata.payload(1)){clean_req_wr_cnt := clean_req_wr_cnt + 1} // wr lock
       }
 
-      // clean_req_cnt is one-cycle ahead of lt_req fire
-      when(clean_req_cnt === lk_req_cnt &  mem_rddata.fire) {
+      when(clean_resp_cnt === lk_hold_cnt){
         r_to_cleanup := False
       }
     }

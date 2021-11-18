@@ -34,7 +34,7 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
   }
 
   val axiRdArb = Axi4ReadOnlyArbiter(outAxiConf, numTxnMan)
-  val axiWrArb = Axi4WriteOnlyArbiter(outAxiConf, numTxnMan, 64)
+  val axiWrArb = Axi4WriteOnlyArbiter(outAxiConf, numTxnMan, 1) // 1: routeBufferSize Specify how many write cmd could be schedule before any write data transaction is transmitted
   axiWrArb.io.noCombLoopCheck // FIXME
   axiRdArb.io.noCombLoopCheck // FIXME
 

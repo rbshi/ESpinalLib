@@ -121,7 +121,7 @@ class LockTable(conf: LockTableConfig) extends Component {
         io.lock_req.ready := ht.io.ht_cmd_if.ready
 
         when(io.lock_req.valid){
-          ht.io.sendCmd(req.lock_addr, (io.lock_req.lock_type ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
+          ht.io.sendCmd(io.lock_req.lock_addr, (io.lock_req.lock_type ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
         }
 
         when(io.lock_req.fire){
