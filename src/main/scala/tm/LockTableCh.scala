@@ -29,7 +29,7 @@ class LockTableCh(conf: LockTableConfig, numLT: Int) extends Component{
   }
 
   // arbiter lock_resp
-  val lockRespArb = StreamArbiterFactory.lowerFirst.noLock.build(LockResp(conf), numLT)
+  val lockRespArb = StreamArbiterFactory.roundRobin.noLock.build(LockResp(conf), numLT)
   for (i <- 0 until numLT){
     arrayLT(i).io.lock_resp >> lockRespArb.io.inputs(i)
   }

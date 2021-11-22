@@ -93,7 +93,7 @@ class OpTopTest extends AnyFunSuite {
       var reqQueue = new mutable.ListBuffer[BigInt]()
       for (k <- 0 until 4){
         reqQueue += opReq2BigInt(k * 64, 0, 0, 0)
-        reqQueue += opReq2BigInt((4 + k)*64, 0, 0, 0)
+        reqQueue += opReq2BigInt((4 + k)*64, 0, 1, 0) // write req
       }
       arrayTxn += reqQueue
     }

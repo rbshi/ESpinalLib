@@ -35,7 +35,7 @@ case class RamEntry(conf: LockTableConfig) extends Bundle{
   val owner_cnt = UInt(conf.queueCntWidth bits)
   val lock_status = Bool() // sh, ex
   val key = UInt(conf.unitAddrWidth bits)
-  
+
   def toUInt : UInt = {
     this.asBits.asUInt
   }
@@ -112,7 +112,7 @@ class LockTable(conf: LockTableConfig) extends Component {
     val r_lock_resp = Reg(LockRespType())
 
     val INSERT_TRY = new State with EntryPoint
-    val INSET_RESP, LK_RESP = new State
+    val INSET_RESP, DEL_CMD, DEL_RESP, LK_RESP = new State
 
     INSERT_TRY
       .whenIsActive{
@@ -162,16 +162,32 @@ class LockTable(conf: LockTableConfig) extends Component {
 
             // lock release, ht.io.ht_res_if.rescode must be ins_exist. 2 cases: cnt-- or del entry (cost a few cycles)
             when(ht_ram_entry_cast.owner_cnt===1){
-              // ht must be ready, del the entry
-              ht.io.sendCmd(req.lock_addr, 0, HashTableOpCode.del)
+              // ht must be ready, del the entry: BUG
+              goto(DEL_CMD)
             } otherwise {
               ht.io.update_en := True
+              goto(LK_RESP)
             }
             r_lock_resp := LockRespType.release
-            goto(LK_RESP)
           }
         }
       }
+
+
+    DEL_CMD
+      .whenIsActive{
+        ht.io.ht_res_if.ready := True
+        ht.io.sendCmd(req.lock_addr, 0, HashTableOpCode.del)
+        when(ht.io.ht_cmd_if.fire){goto(DEL_RESP)}
+
+      }
+
+    DEL_RESP
+      .whenIsActive{
+        ht.io.ht_res_if.ready := True
+        when(ht.io.ht_res_if.fire){goto(LK_RESP)}
+      }
+
 
     LK_RESP
       .whenIsActive{
