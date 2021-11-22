@@ -30,19 +30,21 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
   })
 
   val ht_res_if = master Stream(new Bundle{
-    // cmd
-    val key = UInt(keyWidth bits)
-    val value = UInt(valWidth bits)
-    val opcode = UInt(2 bits)
-
-    val rescode = HashTableRetCode() // SEARCH_FOUND, SEARCH_NOT_SUCCESS_NO_ENTRY, INSERT_SUCCESS, INSERT_SUCCESS_SAME_KEY, INSERT_NOT_SUCCESS_TABLE_IS_FULL, DELETE_SUCCESS, DELETE_NOT_SUCCESS_NO_ENTRY
-    val bucket = UInt(bucketWidth bits)
-    val found_value = UInt(valWidth bits)
-    val chain_state = UInt(3 bits) // NO_CHAIN, IN_HEAD, IN_MIDDLE, IN_TAIL, IN_TAIL_NO_MATCH
 
     // for insert2 function: insert_find_samekey
-    val find_addr = UInt(tableAddrWidth bits)
     val ram_data = UInt(keyWidth+valWidth+tableAddrWidth+1 bits)
+    val find_addr = UInt(tableAddrWidth bits)
+
+    val chain_state = UInt(3 bits) // NO_CHAIN, IN_HEAD, IN_MIDDLE, IN_TAIL, IN_TAIL_NO_MATCH
+    val found_value = UInt(valWidth bits)
+    val bucket = UInt(bucketWidth bits)
+    val rescode = HashTableRetCode() // SEARCH_FOUND, SEARCH_NOT_SUCCESS_NO_ENTRY, INSERT_SUCCESS, INSERT_SUCCESS_SAME_KEY, INSERT_NOT_SUCCESS_TABLE_IS_FULL, DELETE_SUCCESS, DELETE_NOT_SUCCESS_NO_ENTRY
+
+    // cmd
+    val opcode = UInt(2 bits)
+    val value = UInt(valWidth bits)
+    val key = UInt(keyWidth bits)
+
   })
 
   val ht_clear_ram_run = in Bool() // head table
@@ -56,23 +58,23 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
   val update_addr = in UInt(tableAddrWidth bits)
 
   def setDefault() = {
-    ht_cmd_if.valid := False
-    ht_cmd_if.key := 0
-    ht_cmd_if.value := 0
-    ht_cmd_if.opcode := HashTableOpCode.sea
-    ht_res_if.ready := False
-    ht_clear_ram_run := False
-    dt_clear_ram_run := False
-    update_en := False
-    update_addr := 0
-    update_data := 0
+    this.ht_cmd_if.valid := False
+    this.ht_cmd_if.key := 0
+    this.ht_cmd_if.value := 0
+    this.ht_cmd_if.opcode := HashTableOpCode.sea
+    this.ht_res_if.ready := False
+    this.ht_clear_ram_run := False
+    this.dt_clear_ram_run := False
+    this.update_en := False
+    this.update_addr := 0
+    this.update_data := 0
   }
 
   def sendCmd(key:UInt, value:UInt, opcode:SpinalEnumElement[HashTableOpCode.type]): Unit ={
-    ht_cmd_if.valid := True
-    ht_cmd_if.key := key
-    ht_cmd_if.value := value
-    ht_cmd_if.opcode := opcode
+    this.ht_cmd_if.valid := True
+    this.ht_cmd_if.key := key
+    this.ht_cmd_if.value := value
+    this.ht_cmd_if.opcode := opcode
   }
 
   def printCmd() = {

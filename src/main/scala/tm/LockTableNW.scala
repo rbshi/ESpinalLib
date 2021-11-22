@@ -29,12 +29,13 @@ case class LockEntry(conf: LockTableConfig) extends Bundle{
 }
 
 case class RamEntry(conf: LockTableConfig) extends Bundle{
-  val key = UInt(conf.unitAddrWidth bits)
-  val lock_status = Bool() // sh, ex
-  val owner_cnt = UInt(conf.queueCntWidth bits)
-  val next_ptr = UInt(conf.htTableWidth bits)
-  val net_ptr_val = Bool()
 
+  val net_ptr_val = Bool()
+  val next_ptr = UInt(conf.htTableWidth bits)
+  val owner_cnt = UInt(conf.queueCntWidth bits)
+  val lock_status = Bool() // sh, ex
+  val key = UInt(conf.unitAddrWidth bits)
+  
   def toUInt : UInt = {
     this.asBits.asUInt
   }
@@ -49,12 +50,12 @@ case class LockReq(conf: LockTableConfig) extends Bundle{
   val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
   //  val txn_ts
   def setDefault() = {
-    txn_id := 0
-    lock_addr := 0
-    lock_type := False
-    lock_upgrade := False
-    lock_release := False
-    lock_idx := 0
+    this.txn_id := 0
+    this.lock_addr := 0
+    this.lock_type := False
+    this.lock_upgrade := False
+    this.lock_release := False
+    this.lock_idx := 0
   }
 }
 
@@ -67,12 +68,12 @@ case class LockResp(conf: LockTableConfig) extends Bundle{
   val lock_idx = UInt(8 bits)
 
   def setDefault() = {
-    txn_id := 0
-    lock_addr := 0
-    lock_type := False
-    lock_upgrade := False
-    resp_type := LockRespType.abort
-    lock_idx := 0
+    this.txn_id := 0
+    this.lock_addr := 0
+    this.lock_type := False
+    this.lock_upgrade := False
+    this.resp_type := LockRespType.abort
+    this.lock_idx := 0
   }
 }
 
@@ -81,9 +82,9 @@ class LockTableIO(conf: LockTableConfig) extends Bundle{
   val lock_resp = master Stream(LockResp(conf))
 
   def setDefault() = {
-    lock_req.ready := False
-    lock_resp.valid := False
-    lock_resp.setDefault()
+    this.lock_req.ready := False
+    this.lock_resp.valid := False
+    this.lock_resp.setDefault()
   }
 }
 
@@ -105,7 +106,8 @@ class LockTable(conf: LockTableConfig) extends Component {
     ht_lock_entry_cast.assignFromBits(ht.io.ht_res_if.found_value.asBits) // wire: cast the value of ht to lock_entry
 
     val ht_ram_entry_cast = RamEntry(conf)
-    ht_ram_entry_cast.assignFromBits(ht.io.ht_res_if.ram_data.asBits)
+
+    ht_ram_entry_cast.assignFromBits(ht.io.ht_res_if.ram_data.asBits) // BUG, MSB order
 
     val r_lock_resp = Reg(LockRespType())
 

@@ -11,7 +11,7 @@ import scala.language.postfixOps
 
 case class OpReq(conf: LockTableConfig) extends Bundle {
   val addr = UInt(conf.unitAddrWidth bits)
-  val data = UInt(64 bits)
+  val data = Bits(64 bits)
   val mode = Bool() // r/w
   val upgrade = Bool() // normal / upgrade lock (sh -> ex)
   val txn_sig = UInt(2 bits) // 0: addr mode, 1: txn_start, 2: txn_end
@@ -20,10 +20,19 @@ case class OpReq(conf: LockTableConfig) extends Bundle {
     addr := 0; data := 0;    mode := False
     txn_sig := 0
   }
+
+  def sendReq(addr: UInt, data: UInt, mode: Bool, upgrade: Bool, txn_sig: UInt): Unit = {
+    this.addr := addr
+    this.data := data.resize(this.data.getBitsWidth).asBits
+    this.mode := mode
+    this.upgrade := upgrade
+    this.txn_sig := txn_sig
+  }
+
 }
 
 case class OpResp(conf: LockTableConfig) extends Bundle {
-  val data = UInt(64 bits) // FIXME word size
+  val data = Bits(64 bits) // FIXME word size
 
   def setDefault(): Unit = {
     data := 0
@@ -149,7 +158,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     // axi
     io.axi.ar.addr := io.op_req.addr
 
-    when(io.lt_req.fire && io.op_req.txn_sig === 0) { // normal mode
+    when(io.lt_req.fire && ~io.lt_req.lock_release && io.op_req.txn_sig === 0) { // normal mode
       lk_req_cnt := lk_req_cnt + 1
       when(io.op_req.mode) {
         // write op: issue txn_wr_mem & lt_req_wr_cnt++
@@ -204,7 +213,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
 
   val axi_resp = new Area {
     io.axi.r.ready := True
-    io.op_resp.data := io.axi.r.data.asUInt
+    io.op_resp.data := io.axi.r.data(io.op_resp.data.getBitsWidth-1 downto 0)
     when(io.axi.r.fire) {
       // assume op_resp is always ready
       io.op_resp.valid := True
@@ -238,7 +247,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     // assume aw, w is ready in the same cycle with axiArbiter
     io.axi.aw.addr := mem_rddata.addr
     io.axi.aw.valid := mem_rddata.valid
-    io.axi.w.data := mem_rddata.data.asBits
+    io.axi.w.data := mem_rddata.data.resize(axiConf.dataWidth)
     io.axi.w.valid := mem_rddata.valid
     io.axi.aw.ready <> mem_rddata.ready
 //    io.axi.w.ready <> mem_rddata.ready

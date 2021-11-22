@@ -12,6 +12,8 @@ import spinal.lib.bus.amba4.axi.sim._
 import spinal.lib.{master, slave}
 import spinal.sim.SimThread
 
+import scala.util.control.Breaks._
+
 import scala.collection.mutable.ArrayBuffer
 
 
@@ -37,6 +39,8 @@ class TxnManGrpTop(conf: LockTableConfig, numTxnMan: Int) extends Component{
     val axi = master(Axi4(axiConfig))
     val op_req = Vec(slave Stream OpReq(conf), numTxnMan)
     val op_resp = Vec(master Stream OpResp(conf), numTxnMan)
+    val sig_txn_abort = Vec(out Bool(), numTxnMan)
+    val sig_txn_end = Vec(out Bool(), numTxnMan)
   }
 
   val txnManGrp = new TxnManGrp(conf, numTxnMan, axiConfig)
@@ -48,6 +52,9 @@ class TxnManGrpTop(conf: LockTableConfig, numTxnMan: Int) extends Component{
 
   txnManGrp.io.lt_req <> lt.io.lock_req
   txnManGrp.io.lt_resp <> lt.io.lock_resp
+
+  txnManGrp.io.sig_txn_abort <> io.sig_txn_abort
+  txnManGrp.io.sig_txn_end <> io.sig_txn_end
 
 }
 
@@ -65,11 +72,11 @@ class TxnManGrpTest extends AnyFunSuite {
     dut.io.op_req(opIdx).valid #= true
 
     dut.clockDomain.waitSamplingWhere(dut.io.op_req(opIdx).valid.toBoolean && dut.io.op_req(opIdx).ready.toBoolean)
-    opReq.txn_sig.toInt match{
-      case 0 => println(s"[Op:$opIdx\tSend] Addr: ${opReq.addr}\t Mode: ${opReq.mode}")
-      case 1 => println(s"[Op:$opIdx\tTxnStart]")
-      case 2 => println(s"[Op:$opIdx\tTxnEnd]")
-    }
+//    opReq.txn_sig.toInt match{
+//      case 0 => println(s"[Op:$opIdx\tSend] Addr: ${opReq.addr}\t Mode: ${opReq.mode}")
+//      case 1 => println(s"[Op:$opIdx\tTxnStart]")
+//      case 2 => println(s"[Op:$opIdx\tTxnEnd]")
+//    }
     dut.io.op_req(opIdx).valid #= false
   }
 
@@ -132,40 +139,63 @@ class TxnManGrpTest extends AnyFunSuite {
     dut.io.op_req(0).valid #= false
     dut.io.op_req(1).valid #= false
 
-    // init txn array
-    var arrayTxn = Array.fill(2)(mutable.Queue.empty[OpReqSim])
-    for (i <- 0 until 2) {
-      arrayTxn(i).enqueue(OpReqSim(0, 0, false, false, 1)) // txn_start
+    // init txn array, each element in array is a txn with multi r/w operations
+    var arrayTxn = new ArrayBuffer[mutable.ListBuffer[OpReqSim]]()
+    for (i <- 0 until 2){
+
+      var reqQueue = new mutable.ListBuffer[OpReqSim]()
       for (k <- 0 until 4){
-        arrayTxn(i).enqueue(OpReqSim(k, i+1, false, false, 0)) // read
+        reqQueue += OpReqSim(k, 0, false, false, 0) //read
+        reqQueue += OpReqSim(4+k, 0, true, false, 0) //write
       }
-      for (k <- 0 until 4){
-//        arrayTxn(i).enqueue(OpReqSim(i*8+4+k, i+1, true, false, 0)) // write
-        arrayTxn(i).enqueue(OpReqSim(4+k, i+1, true, false, 0)) // write
+      arrayTxn += reqQueue
+    }
+
+
+    def sendTxn(txn : mutable.ListBuffer[OpReqSim], i : Int): Boolean ={
+      sendReq(dut, i, OpReqSim(0, 0, false, false, 1)) // txn_start
+
+      breakable{ for (ii <- txn.indices){
+        if(dut.io.sig_txn_abort(i).toBoolean) {
+          sendReq(dut, i, OpReqSim(0, 0, false, false, 2)) // txn_end
+          break()
+        } else
+          sendReq(dut, i, txn(ii))
+      }}
+      if(!dut.io.sig_txn_abort(i).toBoolean){
+        sendReq(dut, i, OpReqSim(0, 0, false, false, 2)) // txn_end
       }
-      arrayTxn(i).enqueue(OpReqSim(0, 0, false, false, 2)) // txn_end
+      dut.clockDomain.waitSamplingWhere(dut.io.sig_txn_end(i).toBoolean) // wait for sig_txn_end
+      !dut.io.sig_txn_abort(i).toBoolean // ret true if success
     }
 
 
     var arraySend = new ArrayBuffer[SimThread]()
-
     for (i <- 0 until 2) {
       arraySend += fork {
+        var iTxn = 0
         dut.clockDomain.waitSampling(10)
-        while (arrayTxn(i).nonEmpty)
-          sendReq(dut, i, arrayTxn(i).dequeue())
-        dut.clockDomain.waitSampling(1000)
+        while (iTxn < 1){
+          if(sendTxn(arrayTxn(iTxn * 2 + i), i)){
+            println(s"[Op: $i] Txn: ${iTxn * 2 + i} success!")
+            iTxn += 1
+          } else{
+            println(s"[Op: $i] Txn: ${iTxn * 2 + i} aborted!")
+            dut.clockDomain.waitSampling(10) // wait for cycles if txn is aborted
+          }
+        }
+//        dut.clockDomain.waitSampling(1000)
       }
     }
 
 
 
-    for (i <- 0 until 2) {
-      fork {
-        while (true)
-          recResp(dut, i)
-      }
-    }
+//    for (i <- 0 until 2) {
+//      fork {
+//        while (true)
+//          recResp(dut, i)
+//      }
+//    }
 
     for (sendTh <- arraySend){
       sendTh.join()

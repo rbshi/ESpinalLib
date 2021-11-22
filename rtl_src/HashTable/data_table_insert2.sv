@@ -74,21 +74,21 @@ module data_table_insert2 #(
 );
 
 enum int unsigned {
-  IDLE_S,
+  IDLE_S, // 0
   
-  READ_HEAD_S,
+  READ_HEAD_S, // 1
 
-  GO_ON_CHAIN_S,
+  GO_ON_CHAIN_S, // 2
 
-  KEY_MATCH_S,
+  KEY_MATCH_S, // 3
 
-  NO_EMPTY_ADDR_S,
+  NO_EMPTY_ADDR_S, // 4
 
-  NO_HEAD_PTR_WR_HEAD_PTR_S,
-  NO_HEAD_PTR_WR_DATA_S,
+  NO_HEAD_PTR_WR_HEAD_PTR_S, // 5
+  NO_HEAD_PTR_WR_DATA_S, // 6
   
-  ON_TAIL_WR_DATA_S,
-  ON_TAIL_UPD_NEXT_PTR_S
+  ON_TAIL_WR_DATA_S, // 7
+  ON_TAIL_UPD_NEXT_PTR_S // 8
 
 } state, next_state, state_d1;
 

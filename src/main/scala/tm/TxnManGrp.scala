@@ -24,6 +24,9 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
     val lt_resp = slave Stream LockResp(conf)
     // out axi
     val axi = master(Axi4(outAxiConf))
+
+    val sig_txn_abort = Vec(out Bool(), numTxnMan)
+    val sig_txn_end = Vec(out Bool(), numTxnMan)
   }
 
 //  val arrayTxnMan = Array.fill(numTxnMan)(new TxnMan(conf, outAxiConf.copy(idWidth = outAxiConf.idWidth - log2Up(numTxnMan)), ))
@@ -64,6 +67,9 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
   for (i <- 0 until numTxnMan){
     arrayTxnMan(i).io.op_req <> io.op_req(i)
     arrayTxnMan(i).io.op_resp <> io.op_resp(i)
+
+    arrayTxnMan(i).io.sig_txn_abort <> io.sig_txn_abort(i)
+    arrayTxnMan(i).io.sig_txn_end <> io.sig_txn_end(i)
 
     arrayTxnMan(i).io.axi.ar <> axiRdArb.io.inputs(i).ar
     arrayTxnMan(i).io.axi.r <> axiRdArb.io.inputs(i).r
