@@ -120,6 +120,7 @@ class hash_table_top(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth
   addRTLPath("rtl_src/HashTable/ht_res_mux.sv")
   addRTLPath("rtl_src/HashTable/rd_data_val_helper.sv")
   addRTLPath("rtl_src/HashTable/true_dual_port_ram_single_clock.sv")
+
 }
 
 class HashTableDUT(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:Int) extends Component {

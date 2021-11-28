@@ -91,7 +91,7 @@ class OpTopTest extends AnyFunSuite {
     var arrayTxn = new ArrayBuffer[mutable.ListBuffer[BigInt]]()
     for (_ <- 0 until 2){
       var reqQueue = new mutable.ListBuffer[BigInt]()
-      for (k <- 0 until 4){
+      for (k <- 0 until 8){
         reqQueue += opReq2BigInt(k * 64, 0, 0, 0)
         reqQueue += opReq2BigInt((4 + k)*64, 0, 1, 0) // write req
       }
@@ -112,14 +112,19 @@ class OpTopTest extends AnyFunSuite {
     req_axi_mem.memory.writeArray(0, req_mem_init)
 
     // start
-    setAxi4LiteReg(dut, dut.io.control, 0x10, 8) // txnLen
-    setAxi4LiteReg(dut, dut.io.control, 0x14, 1) // txnCnt
-    setAxi4LiteReg(dut, dut.io.control, 0x18, 0) // addrOffset Op0
-    setAxi4LiteReg(dut, dut.io.control, 0x1c, 64 * 8 * 1) // addrOffset Op1
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x10, 8) // txnLen
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x14, 2) // txnCnt
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x18, 0) // addrOffset Op0
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x1c, 64 * 16 * 1) // addrOffset Op1
 
-    setAxi4LiteReg(dut, dut.io.control, 0x00, 1) // ap_start
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x00, 1) // ap_start
 
     dut.clockDomain.waitSampling(1000)
+
+    for (i <- 0 until 4) {
+      println(s"Reg[$i] = ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0x20 + 4 * i)}")
+    }
+
   }
 
 

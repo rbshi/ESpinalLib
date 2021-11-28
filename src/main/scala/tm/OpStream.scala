@@ -24,6 +24,8 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
     val done = out Bool()
     val start = in Bool()
     val addr_offset = in UInt(axiConfig.addressWidth bits)
+    val txn_exe_cnt = out(Reg(UInt(32 bits)).init(0))
+    val txn_abort_cnt = out(Reg(UInt(32 bits)).init(0))
   }
 
   io.axi.ar.valid := False
@@ -51,16 +53,15 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
   val txn_load_cnt = Reg(UInt(8 bits)).init(0)
   val txn_loaded_cnt = Reg(UInt(8 bits)).init(0)
   val req_load_cnt = Reg(UInt(8 bits)).init(0)
-  val txn_exe_cnt = Reg(UInt(8 bits)).init(0)
 
-  io.done := (txn_exe_cnt === io.txn_cnt)
+  io.done := (io.txn_exe_cnt === io.txn_cnt)
 
   val load_txn = new Area {
     val load_addr = Reg(axiConfig.addressType).init(0)
     io.axi.ar.addr := load_addr + io.addr_offset
 
 
-    when((txn_load_cnt - txn_exe_cnt)<2 && txn_load_cnt < io.txn_cnt && io.start){
+    when((txn_load_cnt - io.txn_exe_cnt)<2 && txn_load_cnt < io.txn_cnt && io.start){
       io.axi.ar.valid := True
     }
 
@@ -102,7 +103,7 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
 
     TxnStart.whenIsActive{
       // wait for txn_load
-      when(txn_loaded_cnt > txn_exe_cnt){
+      when(txn_loaded_cnt > io.txn_exe_cnt){
         io.op_req.valid := True
         io.op_req.sendReq(0, 0, False, False, 1) // txn_start
       }
@@ -125,6 +126,7 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
 
       // stop txn when abort
       when(io.sig_txn_abort){
+        io.txn_abort_cnt := io.txn_abort_cnt + 1
         goto(TxnEnd)
       }
       // all txn reqs have been sent
@@ -141,7 +143,7 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
       when(io.sig_txn_end){
         when(~io.sig_txn_abort){
           flagPingPong := ~flagPingPong
-          txn_exe_cnt := txn_exe_cnt + 1
+          io.txn_exe_cnt := io.txn_exe_cnt + 1
         } // flip if commit
         goto(TxnStart)
       }

@@ -90,7 +90,7 @@ trait RenameIO {
 
     for (port <- this.getAllIo) {
       val newName = port.getName()
-        //.replaceAll("(a?[wrb])_(payload_)?", "$1")
+        .replaceAll("(_(a)?[wrb])_(payload_)?", "$1")
 
         // For Axi Stream, raw interface
         //        .replaceAll("_payload$", "_tdata")

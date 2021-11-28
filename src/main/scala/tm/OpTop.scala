@@ -11,9 +11,9 @@ import spinal.lib.fsm.StateMachine
 
 import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
+import util.RenameIO
 
-
-case class OpTop(numTxnMan: Int) extends Component{
+case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
   val conf = LockTableConfig(8, 32, 8, 10, 10, 8)
 
@@ -35,7 +35,7 @@ case class OpTop(numTxnMan: Int) extends Component{
   val io = new Bundle{
     val m_axi = master(Axi4(axiConfig))
     val req_axi = master(Axi4(axiConfig))
-    val control = slave(AxiLite4(AxiLite4Config(12, 32)))
+    val s_axi_control = slave(AxiLite4(AxiLite4Config(12, 32)))
   }
 
   io.req_axi.aw.addr := 0
@@ -50,7 +50,7 @@ case class OpTop(numTxnMan: Int) extends Component{
 
 
   // axilite control registers
-  val ctlReg = new AxiLite4SlaveFactory(io.control)
+  val ctlReg = new AxiLite4SlaveFactory(io.s_axi_control)
 
   val ap_start = ctlReg.createReadAndWrite(Bool(), 0, 0).init(False)
   val ap_done = ctlReg.createReadOnly(Bool(), 0, 1).init(False)
@@ -64,9 +64,15 @@ case class OpTop(numTxnMan: Int) extends Component{
   val txnCnt = ctlReg.createReadAndWrite(UInt(8 bits), 0x14, 0)
 
   val addrOffset = Vec(Reg(UInt(32 bits)), numTxnMan)
+  val txnExeCnt = Vec(UInt(32 bits), numTxnMan)
+  val txnAbortCnt = Vec(UInt(32 bits), numTxnMan)
+
   for (i <- 0 until numTxnMan){
     ctlReg.readAndWrite(addrOffset(i), 0x18 + 4 * i, 0)
+    ctlReg.readAndWrite(txnExeCnt(i), 0x20 + 4 * i, 0)
+    ctlReg.readAndWrite(txnAbortCnt(i), 0x28 + 4 * i, 0)
   }
+
 
   val txnManGrp = new TxnManGrp(conf, numTxnMan, axiConfig)
   val lt = new LockTableCh(conf, numTxnMan)
@@ -90,6 +96,9 @@ case class OpTop(numTxnMan: Int) extends Component{
   opGrp.foreach(_.io.txn_len := txnLen)
   opGrp.foreach(_.io.txn_cnt := txnCnt)
   (addrOffset, opGrp.map(_.io.addr_offset)).zipped.map(_ <> _)
+  (txnExeCnt, opGrp.map(_.io.txn_exe_cnt)).zipped.map(_ <> _)
+  (txnAbortCnt, opGrp.map(_.io.txn_abort_cnt)).zipped.map(_ <> _)
+
 
   opGrp.foreach(_.io.start := ap_start)
 
@@ -113,3 +122,14 @@ case class OpTop(numTxnMan: Int) extends Component{
 
 }
 
+
+object OpTopMain {
+  def main(args: Array[String]) {
+
+    SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
+      val top = new OpTop(2)
+      top.renameIO()
+      top
+    }
+  }
+}
