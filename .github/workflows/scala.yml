@@ -21,4 +21,4 @@ jobs:
     - name: Install verilator
       run: sudo apt-get update && sudo apt-get install verilator -y
     - name: Run tests
-      run: sbt test
+      run: sbt clean test
