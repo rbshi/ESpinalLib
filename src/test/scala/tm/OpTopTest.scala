@@ -11,7 +11,6 @@ import spinal.sim.SimThread
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
-import scala.util.control.Breaks.{break, breakable}
 
 import esim._
 

@@ -1,19 +1,15 @@
 package tm
 
-
 import spinal.core.{UInt, _}
 import spinal.core
 import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
 import spinal.lib.bus.amba4.axilite._
-import spinal.lib.fsm.StateMachine
 
 import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
 import util.RenameIO
-import util.ApIO
-
 
 case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
@@ -40,6 +36,7 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
     val s_axi_control = slave(AxiLite4(AxiLite4Config(12, 32)))
   }
 
+  // fixme: how to abstract this away?
   io.req_axi.aw.addr := 0
   io.req_axi.aw.valid := False
   io.req_axi.aw.id := 0
@@ -51,14 +48,14 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
   io.req_axi.b.ready := True
 
 
-  // axilite control registers
+  // control reg: vitis_kernel interface
   val ctlReg = new AxiLite4SlaveFactory(io.s_axi_control)
-
   val ap_start = ctlReg.createReadAndWrite(Bool(), 0, 0).init(False)
   val ap_done = ctlReg.createReadOnly(Bool(), 0, 1).init(False)
   val ap_idle = ctlReg.createReadOnly(Bool(), 0, 2).init(True)
   ctlReg.onRead(0)(ap_done:=False)
 
+  // control reg: custom
   val txnLen = ctlReg.createReadAndWrite(UInt(8 bits), 0x10, 0)
   val txnCnt = ctlReg.createReadAndWrite(UInt(8 bits), 0x14, 0)
 
@@ -72,9 +69,13 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
     ctlReg.readAndWrite(txnAbortCnt(i), 0x28 + 4 * i, 0)
   }
 
+  // instantiate a TxnManGrp that shares one AXI interface
   val txnManGrp = new TxnManGrp(conf, numTxnMan, axiConfig)
+
+  // instantiate LockTable of one memory channel
   val lt = new LockTableCh(conf, numTxnMan)
 
+  // add opStream for each TxnMan
   val opGrp = ArrayBuffer[OpStream]()
   for (i <- 0 until numTxnMan){
     opGrp += new OpStream(conf, axiConfig.copy(idWidth = axiConfig.idWidth - log2Up(numTxnMan)))
