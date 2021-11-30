@@ -18,8 +18,6 @@ before_script:
   - apt-get install git make autoconf g++ flex bison build-essential -yqq
   # Install verilator (install a latest version)
   - git clone http://git.veripool.org/git/verilator
-  - unsetenv VERILATOR_ROOT
-  - unset VERILATOR_ROOT
   - cd verilator
   - git pull
   - git checkout v4.040
