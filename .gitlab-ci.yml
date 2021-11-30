@@ -15,9 +15,19 @@ before_script:
   # Log the sbt version
   - sbt sbtVersion
   # Install make
-  - apt-get install make build-essential -yqq  
-  # Install verilator
-  - apt-get install verilator -yqq
+  - apt-get install git make autoconf g++ flex bison build-essential -yqq
+  # Install verilator (install a latest version)
+  - git clone http://git.veripool.org/git/verilator
+  - unsetenv VERILATOR_ROOT
+  - unset VERILATOR_ROOT
+  - cd verilator
+  - git pull
+  - git checkout v4.040
+  - autoconf
+  - ./configure
+  - make -j$(nproc)
+  - make install
+  - cd .. && echo "Verilator installation DONE."
 
 test:
   script:
