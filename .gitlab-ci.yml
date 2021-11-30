@@ -36,7 +36,7 @@ envprepare-job:       # This job runs in the build stage, which runs first.
     - apt-get install sbt -yqq
     # Log the sbt version
     - sbt sbtVersion
-    - sudo apt-get update && sudo apt-get install verilator -yqq
+    - apt-get update && apt-get install verilator -yqq
 
 unit-test-job:   # This job runs in the test stage.
   stage: test    # It only starts when the job in the build stage completes successfully.
