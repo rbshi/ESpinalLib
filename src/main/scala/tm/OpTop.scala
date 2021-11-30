@@ -106,6 +106,7 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
   val runState = Reg(Bool())
 
+  // fixme: ap behavior should be packaged
   when(ap_start){
     ap_start.clear()
     ap_idle.clear()
