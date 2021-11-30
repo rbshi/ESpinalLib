@@ -10,7 +10,7 @@ import scala.math._
 
 class LockTableTest extends AnyFunSuite {
 
-  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
+  val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
   def sendReq(dut: LockTable, reqQueue: Queue[(Int, Int, Boolean, Boolean)]): Unit = {
     while(reqQueue.nonEmpty){

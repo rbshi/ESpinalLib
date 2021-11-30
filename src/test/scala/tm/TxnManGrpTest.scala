@@ -22,7 +22,7 @@ import scala.collection.mutable.ArrayBuffer
 class TxnManGrpTop(conf: LockTableConfig, numTxnMan: Int) extends Component{
 
   val axiConfig = Axi4Config(
-    addressWidth = 32,
+    addressWidth = 64,
     dataWidth    = 64,
     idWidth = 6,
     useStrb = false,
@@ -62,7 +62,7 @@ class TxnManGrpTop(conf: LockTableConfig, numTxnMan: Int) extends Component{
 
 class TxnManGrpTest extends AnyFunSuite {
 
-  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
+  val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
   def sendReq(dut: TxnManGrpTop, opIdx: Int, opReq: OpReqSim): Unit ={
     dut.io.op_req(opIdx).addr #= opReq.addr
