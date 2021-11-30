@@ -8,7 +8,8 @@ import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config, Axi4CrossbarFactory}
 import scala.collection._
 import scala.util.Random
 import scala.math._
-import spinal.lib.bus.amba4.axi.sim._
+//import spinal.lib.bus.amba4.axi.sim._
+import esim._
 import spinal.lib.{master, slave}
 import spinal.sim.SimThread
 
