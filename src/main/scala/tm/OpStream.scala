@@ -49,45 +49,60 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
   val txn_mem_wr_data = io.axi.r.data(io.op_req.getBitsWidth-1 downto 0).toDataType(OpReq(conf))
   val txn_mem_rd_addr = Reg(UInt(8 bits)).init(0)
 
-
-  val txn_load_cnt = Reg(UInt(8 bits)).init(0)
   val txn_loaded_cnt = Reg(UInt(8 bits)).init(0)
-  val req_load_cnt = Reg(UInt(8 bits)).init(0)
 
   io.done := (io.txn_exe_cnt === io.txn_cnt)
+  io.op_resp.ready := True // bypass the op_resp
 
-  val load_txn = new Area {
+
+  val load_txn = new StateMachine {
+    val txn_load_cnt = Reg(UInt(8 bits)).init(0)
     val load_addr = Reg(axiConfig.addressType).init(0)
+    val req_load_cnt = Reg(UInt(8 bits)).init(0)
+
     io.axi.ar.addr := load_addr + io.addr_offset
 
+    val IDLE = new State with EntryPoint
+    val LOAD = new State
 
-    when((txn_load_cnt - io.txn_exe_cnt)<2 && txn_load_cnt < io.txn_cnt && io.start){
-      io.axi.ar.valid := True
-    }
-
-    when(io.axi.ar.fire){
-      load_addr := load_addr + 64
-      req_load_cnt := req_load_cnt + 1
-      when(req_load_cnt === io.txn_len){
-        txn_load_cnt := txn_load_cnt + 1 // fixme: here txn_load_cnt does not mean the data are all ready
-        req_load_cnt := 0
+    IDLE.whenIsActive{
+      when(io.start){
+        load_addr.clearAll()
+        txn_load_cnt.clearAll()
+        txn_loaded_cnt.clearAll()
+        io.txn_exe_cnt.clearAll()
+        io.txn_abort_cnt.clearAll()
+        goto(LOAD)
       }
     }
 
-    // axi rd resp: write the req with double buffering
-    when(io.axi.r.fire){
-      txn_mem.write(txn_mem_wr_addr, txn_mem_wr_data)
+    LOAD.whenIsActive{
+      when((txn_load_cnt - io.txn_exe_cnt)<2 && txn_load_cnt < io.txn_cnt){
+        io.axi.ar.valid := True
+      }
+      when(io.axi.ar.fire){
+        load_addr := load_addr + 64
+        req_load_cnt := req_load_cnt + 1
+        when(req_load_cnt === (io.txn_len-1)){
+          txn_load_cnt := txn_load_cnt + 1 // fixme: here txn_load_cnt does not mean the data are all ready
+          req_load_cnt := 0
+        }
+      }
+      // axi rd resp: write the req with double buffering
+      when(io.axi.r.fire){
+        txn_mem.write(txn_mem_wr_addr, txn_mem_wr_data)
 
-      when(txn_mem_wr_addr === io.txn_len-1){txn_loaded_cnt := txn_loaded_cnt + 1}
+        when(txn_mem_wr_addr === io.txn_len-1){txn_loaded_cnt := txn_loaded_cnt + 1}
 
-      when(txn_mem_wr_addr === io.txn_len*2-1){
-        txn_loaded_cnt := txn_loaded_cnt + 1
-        txn_mem_wr_addr := 0
-      } otherwise {txn_mem_wr_addr := txn_mem_wr_addr + 1}
+        when(txn_mem_wr_addr === io.txn_len*2-1){
+          txn_loaded_cnt := txn_loaded_cnt + 1
+          txn_mem_wr_addr := 0
+          when(txn_loaded_cnt === (io.txn_cnt-1)){goto(IDLE)}
+        } otherwise {txn_mem_wr_addr := txn_mem_wr_addr + 1}
+      }
     }
   }
 
-  io.op_resp.ready := True // bypass the op_resp
 
   val sendTxn = new StateMachine {
 

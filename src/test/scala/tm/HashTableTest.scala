@@ -35,7 +35,7 @@ class HashTableTest extends AnyFunSuite {
       sendCmd()
 
       for ((k, v) <- simHT) {
-        cmdQueue += ((HashTableOpCode.ins2, k, 888)) // insert2, change a value, should not be updated
+        cmdQueue += ((HashTableOpCode.ins2, k, 88)) // insert2, change a value, should not be updated
       }
       sendCmd()
 
@@ -88,9 +88,9 @@ class HashTableTest extends AnyFunSuite {
 //            assert(dut.io.ht_res_if.found_value.toBigInt == 888)
           }
           //
-          if (dut.io.ht_res_if.rescode.toBigInt == 1){
-            assert(dut.io.ht_res_if.key.toBigInt%4==0)
-          }
+//          if (dut.io.ht_res_if.rescode.toBigInt == 1){
+//            assert(dut.io.ht_res_if.key.toBigInt%4==0)
+//          }
 
           if (dut.io.ht_res_if.rescode.toBigInt == 3){
             println(s"[Info] findAddr: ${dut.io.ht_res_if.find_addr.toBigInt}\t ramData: ${dut.io.ht_res_if.ram_data.toBigInt}")
@@ -107,6 +107,6 @@ class HashTableTest extends AnyFunSuite {
   }
 
   test("insert_search_delete") {
-    SimConfig.withWave.compile(new HashTableDUT(32, 31, 8, 10)).doSim("test", 99)(insert_search_delete)
+    SimConfig.withWave.compile(new HashTableDUT(64, 9, 8, 10)).doSim("test", 99)(insert_search_delete)
   }
 }

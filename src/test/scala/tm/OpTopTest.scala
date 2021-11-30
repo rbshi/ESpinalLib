@@ -3,7 +3,7 @@ package tm
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.core.sim._
 import spinal.core._
-import spinal.lib.bus.amba4.axi.sim._
+//import spinal.lib.bus.amba4.axi.sim._
 import spinal.lib.bus.amba4.axilite.AxiLite4
 import spinal.lib.Stream
 import spinal.sim.SimThread
@@ -12,6 +12,8 @@ import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
 import scala.util.control.Breaks.{break, breakable}
+
+import esim._
 
 class OpTopTest extends AnyFunSuite {
 
@@ -56,7 +58,7 @@ class OpTopTest extends AnyFunSuite {
   }
 
   def opReq2BigInt(addr: Int, data: BigInt, mode: BigInt, upgrade: BigInt): BigInt ={
-    addr + (data << 32) + (mode << (32+64)) + (upgrade << (32 + 64 + 1))
+    addr + (data << 64) + (mode << (64+64)) + (upgrade << (64 + 64 + 1))
   }
 
   def multi_op(dut: OpTop): Unit ={
@@ -124,6 +126,24 @@ class OpTopTest extends AnyFunSuite {
     for (i <- 0 until 4) {
       println(s"Reg[$i] = ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0x20 + 4 * i)}")
     }
+
+    println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
+    dut.clockDomain.waitSampling(10)
+    println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
+
+//    dut.io.txnLen #= 8
+//    dut.io.txnCnt #= 2
+//    dut.io.addrOffset(0) #= 0
+//    dut.io.addrOffset(1) #= 64 * 16 * 1
+//
+//    dut.io.ap.start #= true
+
+//    dut.clockDomain.waitSamplingWhere(dut.io.ap.done.toBoolean)
+
+//      for (i <- 0 until 2) {
+//        println(s"txnExeCnt($i)=${dut.io.txnExeCnt(i).toBigInt}")
+//        println(s"txnAbortCnt($i)=${dut.io.txnAbortCnt(i).toBigInt}")
+//      }
 
   }
 

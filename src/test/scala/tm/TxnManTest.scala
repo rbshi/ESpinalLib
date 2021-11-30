@@ -8,7 +8,8 @@ import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 import scala.collection._
 import scala.util.Random
 import scala.math._
-import spinal.lib.bus.amba4.axi.sim._
+//import spinal.lib.bus.amba4.axi.sim._
+import esim._
 import spinal.lib.{master, slave}
 
 
@@ -16,7 +17,7 @@ import spinal.lib.{master, slave}
 class TxnManTop(conf: LockTableConfig) extends Component{
 
   val axiConfig = Axi4Config(
-    addressWidth = 32,
+    addressWidth = 64,
     dataWidth    = 64,
     idWidth = 6,
     useStrb = false,
@@ -35,9 +36,9 @@ class TxnManTop(conf: LockTableConfig) extends Component{
 
   val io = new Bundle{
     val axi = master(Axi4(Axi4Config(
-      addressWidth = 32,
+      addressWidth = 64,
       dataWidth    = 64,
-      idWidth = 1,
+      idWidth = 6,
       useStrb = false,
       useBurst = false,
       useId = true,
@@ -61,7 +62,7 @@ class TxnManTop(conf: LockTableConfig) extends Component{
 
 class TxnManTest extends AnyFunSuite {
 
-  val LTConfig = LockTableConfig(8, 32, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
+  val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
   def sendReq(dut: TxnManTop, opReq: OpReqSim): Unit ={
     dut.io.op_req.addr #= opReq.addr
