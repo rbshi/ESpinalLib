@@ -15,7 +15,7 @@ before_script:
   # Log the sbt version
   - sbt sbtVersion
   # Install make
-  - apt-get install make -yqq  
+  - apt-get install make build-essential -yqq  
   # Install verilator
   - apt-get install verilator -yqq
 
