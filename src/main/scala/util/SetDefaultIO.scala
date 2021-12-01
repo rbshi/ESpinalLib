@@ -6,8 +6,6 @@ import spinal.lib.Stream
 
 trait SetDefaultIO {
 
-//  this: Component =>
-
   def setDefStream[T <: Data](stream: Stream[T]): Unit ={
     if(stream.isMasterInterface){
       stream.valid := False

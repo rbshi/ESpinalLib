@@ -82,8 +82,6 @@ trait SimFunSuite{
     return bus.valid.toBoolean && bus.ready.toBoolean
   }
 
-
-
 }
 
 

@@ -77,7 +77,7 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
   // add opStream for each TxnMan
   val opGrp = ArrayBuffer[OpStream]()
-  for (i <- 0 until numTxnMan){
+  for (_ <- 0 until numTxnMan){
     opGrp += new OpStream(conf, axiConfig.copy(idWidth = axiConfig.idWidth - log2Up(numTxnMan)))
   }
 
@@ -100,10 +100,7 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
 
   opGrp.foreach(_.io.start := ap_start)
-
-//  val reduced_opdone = opGrp.map(_.io.done).foldLeft(False)(_ && _) // not work??
-  val reduced_opdone = opGrp(0).io.done && opGrp(1).io.done
-
+  val reduced_opdone = opGrp.map(_.io.done).foldLeft(True)(_ && _) // && reduction: start with True
   val runState = Reg(Bool())
 
   // fixme: ap behavior should be packaged
@@ -132,11 +129,11 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
 object OpTopMain {
   def main(args: Array[String]): Unit = {
-
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
-      val top = new OpTop(2)
-      top.renameIO()
-      top
+        val top = OpTop(2)
+        top.renameIO()
+        top.setDefinitionName("tmop")
+        top
     }
   }
 }
