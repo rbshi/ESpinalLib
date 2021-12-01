@@ -29,8 +29,6 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
     val sig_txn_end = Vec(out Bool(), numTxnMan)
   }
 
-//  val arrayTxnMan = Array.fill(numTxnMan)(new TxnMan(conf, outAxiConf.copy(idWidth = outAxiConf.idWidth - log2Up(numTxnMan)), ))
-
   val arrayTxnMan = ArrayBuffer[TxnMan]()
   for (i <- 0 until numTxnMan){
     arrayTxnMan += new TxnMan(conf, outAxiConf.copy(idWidth = outAxiConf.idWidth - log2Up(numTxnMan)), i) // i: txnManID
@@ -71,6 +69,7 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
     arrayTxnMan(i).io.sig_txn_abort <> io.sig_txn_abort(i)
     arrayTxnMan(i).io.sig_txn_end <> io.sig_txn_end(i)
 
+    // separate RdArb/WrArb, it works.
     arrayTxnMan(i).io.axi.ar <> axiRdArb.io.inputs(i).ar
     arrayTxnMan(i).io.axi.r <> axiRdArb.io.inputs(i).r
     arrayTxnMan(i).io.axi.aw <> axiWrArb.io.inputs(i).aw

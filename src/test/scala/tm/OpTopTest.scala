@@ -13,48 +13,9 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
 
 import esim._
+import util._
 
-class OpTopTest extends AnyFunSuite {
-
-  def setAxi4LiteReg(dut: Component, bus: AxiLite4, addr: Int, data: Int): Unit ={
-    val awa = fork {
-      bus.aw.addr #= addr
-      bus.w.data #= data
-      bus.w.strb #= 0xF // strb for 4 Bytes
-      bus.aw.valid #= true
-      bus.w.valid #= true
-      dut.clockDomain.waitSamplingWhere(bus.aw.ready.toBoolean && bus.w.ready.toBoolean)
-      bus.aw.valid #= false
-      bus.w.valid #= false
-    }
-
-    val b = fork {
-      bus.b.ready #= true
-      dut.clockDomain.waitSamplingWhere(bus.b.valid.toBoolean)
-      bus.b.ready #= false
-    }
-    awa.join()
-    b.join()
-  }
-
-  def readAxi4LiteReg(dut: Component, bus: AxiLite4, addr: Int): BigInt ={
-    var data: BigInt = 1
-    val ar = fork{
-      bus.ar.addr #= addr
-      bus.ar.valid #= true
-      dut.clockDomain.waitSamplingWhere(bus.ar.ready.toBoolean)
-      bus.ar.valid #= false
-    }
-
-    val r = fork{
-      bus.r.ready #= true
-      dut.clockDomain.waitSamplingWhere(bus.r.valid.toBoolean)
-      data = bus.r.data.toBigInt
-    }
-    ar.join()
-    r.join()
-    return data
-  }
+class OpTopTest extends AnyFunSuite with SimFunSuite {
 
   def opReq2BigInt(addr: Int, data: BigInt, mode: BigInt, upgrade: BigInt): BigInt ={
     addr + (data << 64) + (mode << (64+64)) + (upgrade << (64 + 64 + 1))
