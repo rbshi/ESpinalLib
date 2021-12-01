@@ -25,7 +25,7 @@ trait RenameIO {
     for (port <- this.getAllIo) {
       val newName = port.getName()
         .replaceAll("(_(a)?[wrb])_(payload_)?", "$1")
-
+        .replaceAll("_payload_", "_")
         // For Axi Stream, raw interface
         //        .replaceAll("_payload$", "_tdata")
         //        .replaceAll("_ready$", "_tready")
@@ -35,8 +35,6 @@ trait RenameIO {
         //        .replaceAll("_last$", "_tlast")
         //        .replaceAll("_payload_t", "_t")
         //        .replaceAll("_payload_fragment_t", "_t")
-        .replaceAll("_payload_", "_")
-
       port.setName(newName)
     }
     //println(f"Renamed the IO signal of ${this.getClass().getSimpleName}")

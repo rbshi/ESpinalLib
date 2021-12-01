@@ -129,8 +129,9 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 }
 
 
+
 object OpTopMain {
-  def main(args: Array[String]) {
+  def main(args: Array[String]): Unit = {
 
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
       val top = new OpTop(2)

@@ -35,14 +35,6 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
   io.axi.r.ready := True
 
   setDefStream(io.op_req)
-//  io.op_req.valid := False
-//  io.op_req.addr := 0
-//  io.op_req.data := 0
-//  io.op_req.mode := False
-//  io.op_req.upgrade := False
-//  io.op_req.txn_sig := 0
-
-
 
   val txn_mem = Mem(OpReq(conf), 256)
   val txn_mem_wr_addr = Reg(UInt(8 bits)).init(0)

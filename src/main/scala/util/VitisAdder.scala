@@ -1,17 +1,12 @@
-package tm
+// Deprecated: The intention was to build a scala addition for Vitis RTL kernel, but Vitis require at least one AXI bus
 
+package util
 
 import spinal.core.{UInt, _}
-import spinal.core
 import spinal.lib._
-import spinal.lib.fsm._
-import spinal.lib.bus.amba4.axi._
 import spinal.lib.bus.amba4.axilite._
-import spinal.lib.fsm.StateMachine
+import spinal.lib.fsm._
 
-import util.RenameIO
-
-import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
 
 class VitisAdder extends Component with RenameIO {

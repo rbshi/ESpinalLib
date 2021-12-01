@@ -9,6 +9,11 @@ import scala.util.Random
 import scala.math._
 import util.RenameIO
 
+
+// ins: if key exists, will update the value and return ins_exist; otherwise, ins_success
+// ins2: if key exists, will return ins_exist but NOT update the value (try insert); Meanwhile,
+// return ram_data & find_addr on ht_res_if for a follow-up quick update.
+
 object HashTableOpCode extends SpinalEnum() {
   val sea, ins, del, ins2 = newElement()
 }
