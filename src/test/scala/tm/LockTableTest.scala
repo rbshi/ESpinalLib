@@ -6,9 +6,10 @@ import org.scalatest.funsuite.AnyFunSuite
 import scala.collection.mutable._
 import scala.util.Random
 import scala.math._
+import util._
 
 
-class LockTableTest extends AnyFunSuite {
+class LockTableTest extends AnyFunSuite with SimFunSuite {
 
   val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
@@ -166,7 +167,7 @@ class LockTableTest extends AnyFunSuite {
 
         dut.clockDomain.waitSampling()
 
-        if (dut.io.lock_resp.valid.toBoolean && dut.io.lock_resp.ready.toBoolean) {
+        if (isFire(dut.io.lock_resp)) {
           if (dut.io.lock_resp.resp_type.toBigInt == 1) {
             assert(lockMap.contains(dut.io.lock_resp.lock_addr.toBigInt))
             assert(lockMap(dut.io.lock_resp.lock_addr.toBigInt)._2 || dut.io.lock_resp.lock_type.toBoolean)

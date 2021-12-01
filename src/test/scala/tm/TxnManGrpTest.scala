@@ -12,14 +12,12 @@ import util.{AxiMemorySim, AxiMemorySimConfig}
 import scala.collection._
 import scala.util.Random
 import scala.math._
-import util._
 import spinal.lib.{master, slave}
 import spinal.sim.SimThread
-
 import scala.util.control.Breaks._
-
 import scala.collection.mutable.ArrayBuffer
 
+import util._
 
 // top level: TxnManGrp <> LockTableCh
 class TxnManGrpTop(conf: LockTableConfig, numTxnMan: Int) extends Component{
@@ -62,8 +60,10 @@ class TxnManGrpTop(conf: LockTableConfig, numTxnMan: Int) extends Component{
 
 }
 
+case class OpReqSim(addr:BigInt, data:BigInt, mode:Boolean, upgrade: Boolean, txn_sig:BigInt)
 
-class TxnManGrpTest extends AnyFunSuite {
+class TxnManGrpTest extends AnyFunSuite with SimFunSuite {
+
 
   val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
@@ -86,26 +86,8 @@ class TxnManGrpTest extends AnyFunSuite {
 
   def recResp(dut: TxnManGrpTop, opIdx: Int): Unit ={
     dut.io.op_resp(opIdx).ready #= true
-    dut.clockDomain.waitSamplingWhere(dut.io.op_resp(opIdx).valid.toBoolean && dut.io.op_resp(opIdx).ready.toBoolean)
+    dut.clockDomain.waitSamplingWhere(isFire(dut.io.op_resp(opIdx)))
     println(s"[Op:$opIdx\tResp] Data: ${dut.io.op_resp(opIdx).data.toBigInt}")
-  }
-
-  def axiMonitor(dut: TxnManGrpTop): Unit = {
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.readCmd.valid.toBoolean && dut.io.axi.readCmd.ready.toBoolean)
-      println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")}}
-
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.readRsp.valid.toBoolean && dut.io.axi.readRsp.ready.toBoolean)
-      println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")}}
-
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeCmd.valid.toBoolean && dut.io.axi.writeCmd.ready.toBoolean)
-      println(s"[AXI WrCmd]: WrAddr: ${dut.io.axi.writeCmd.addr.toBigInt}")}}
-
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeData.valid.toBoolean && dut.io.axi.writeData.ready.toBoolean)
-      println(s"[AXI WrData]: WrData: ${dut.io.axi.writeData.data.toBigInt}")}}
   }
 
   def ltMonitor(dut: TxnManTop): Unit = {
@@ -118,10 +100,6 @@ class TxnManGrpTest extends AnyFunSuite {
       println(s"[Lock Resp]: addr: ${dut.lt.io.lock_resp.lock_addr.toBigInt}\t type: ${dut.lt.io.lock_resp.lock_type.toBoolean}\t upgrade: ${dut.lt.io.lock_resp.lock_upgrade.toBoolean}\t resp: ${dut.lt.io.lock_resp.resp_type.toBigInt}\t")
     }}
   }
-
-
-  case class OpReqSim(addr:BigInt, data:BigInt, mode:Boolean, upgrade: Boolean, txn_sig:BigInt)
-
 
   def multi_op(dut: TxnManGrpTop): Unit ={
     dut.clockDomain.forkStimulus(period = 10)
@@ -191,8 +169,6 @@ class TxnManGrpTest extends AnyFunSuite {
 //        dut.clockDomain.waitSampling(1000)
       }
     }
-
-
 
 //    for (i <- 0 until 2) {
 //      fork {

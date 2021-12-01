@@ -35,20 +35,7 @@ class TxnManTop(conf: LockTableConfig) extends Component{
   val lt = new LockTable(conf)
 
   val io = new Bundle{
-    val axi = master(Axi4(Axi4Config(
-      addressWidth = 64,
-      dataWidth    = 64,
-      idWidth = 6,
-      useStrb = false,
-      useBurst = false,
-      useId = true,
-      useLock      = false,
-      useRegion    = false,
-      useCache     = false,
-      useProt      = false,
-      useQos       = false,
-      useLen       = true
-    )))
+    val axi = master(Axi4(axiConfig))
     val op_req = slave Stream(OpReq(conf))
     val op_resp = master Stream(OpResp(conf))
   }
@@ -60,7 +47,7 @@ class TxnManTop(conf: LockTableConfig) extends Component{
 }
 
 
-class TxnManTest extends AnyFunSuite {
+class TxnManTest extends AnyFunSuite with SimFunSuite {
 
   val LTConfig = LockTableConfig(8, 64, 8, 10, 10, 8) // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth
 
@@ -72,7 +59,7 @@ class TxnManTest extends AnyFunSuite {
     dut.io.op_req.txn_sig #= opReq.txn_sig
     dut.io.op_req.valid #= true
 
-    dut.clockDomain.waitSamplingWhere(dut.io.op_req.valid.toBoolean && dut.io.op_req.ready.toBoolean)
+    dut.clockDomain.waitSamplingWhere(isFire(dut.io.op_req))
     opReq.txn_sig.toInt match{
       case 0 => println(s"[Send] Addr: ${opReq.addr}\t Mode: ${opReq.mode}")
       case 1 => println("[TxnStart]")
@@ -83,35 +70,17 @@ class TxnManTest extends AnyFunSuite {
 
   def recResp(dut: TxnManTop): Unit ={
     dut.io.op_resp.ready #= true
-    dut.clockDomain.waitSamplingWhere(dut.io.op_resp.valid.toBoolean && dut.io.op_resp.ready.toBoolean)
+    dut.clockDomain.waitSamplingWhere(isFire(dut.io.op_resp))
     println(s"[Resp] Data: ${dut.io.op_resp.data.toBigInt}")
-  }
-
-  def axiMonitor(dut: TxnManTop): Unit = {
-    fork{while(true){
-    dut.clockDomain.waitSamplingWhere(dut.io.axi.readCmd.valid.toBoolean && dut.io.axi.readCmd.ready.toBoolean)
-    println(s"[AXI RdCmd]: ReadAddr: ${dut.io.axi.readCmd.addr.toBigInt}")}}
-
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.readRsp.valid.toBoolean && dut.io.axi.readRsp.ready.toBoolean)
-      println(s"[AXI RdResp]: ReadData: ${dut.io.axi.readRsp.data.toBigInt}")}}
-
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeCmd.valid.toBoolean && dut.io.axi.writeCmd.ready.toBoolean)
-      println(s"[AXI WrCmd]: WrAddr: ${dut.io.axi.writeCmd.addr.toBigInt}")}}
-
-    fork{while(true){
-      dut.clockDomain.waitSamplingWhere(dut.io.axi.writeData.valid.toBoolean && dut.io.axi.writeData.ready.toBoolean)
-      println(s"[AXI WrData]: WrData: ${dut.io.axi.writeData.data.toBigInt}")}}
   }
 
   def ltMonitor(dut: TxnManTop): Unit = {
     fork{while (true){
-        dut.clockDomain.waitSamplingWhere(dut.lt.io.lock_req.valid.toBoolean && dut.lt.io.lock_req.ready.toBoolean)
+        dut.clockDomain.waitSamplingWhere(isFire(dut.lt.io.lock_req))
         println(s"[Lock Req]: addr: ${dut.lt.io.lock_req.lock_addr.toBigInt}\t type: ${dut.lt.io.lock_req.lock_type.toBoolean}\t upgrade: ${dut.lt.io.lock_req.lock_upgrade.toBoolean}\t release: ${dut.lt.io.lock_req.lock_release.toBoolean}\t")
       }}
     fork {while (true) {
-        dut.clockDomain.waitSamplingWhere(dut.lt.io.lock_resp.valid.toBoolean && dut.lt.io.lock_resp.ready.toBoolean)
+        dut.clockDomain.waitSamplingWhere(isFire(dut.lt.io.lock_resp))
         println(s"[Lock Resp]: addr: ${dut.lt.io.lock_resp.lock_addr.toBigInt}\t type: ${dut.lt.io.lock_resp.lock_type.toBoolean}\t upgrade: ${dut.lt.io.lock_resp.lock_upgrade.toBoolean}\t resp: ${dut.lt.io.lock_resp.resp_type.toBigInt}\t")
       }}
   }
@@ -167,7 +136,7 @@ class TxnManTest extends AnyFunSuite {
       while(true){recResp(dut)}
     }
 
-    val axiMon = fork {axiMonitor(dut)}
+    val axiMon = fork {axiMonitor(dut, dut.io.axi)}
     val ltMon = fork {ltMonitor(dut)}
 
     val waitEnd = fork {
