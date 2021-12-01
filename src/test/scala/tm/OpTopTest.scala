@@ -12,7 +12,6 @@ import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
 
-import esim._
 import util._
 
 class OpTopTest extends AnyFunSuite with SimFunSuite {
@@ -35,8 +34,6 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
     // init data in axi mem
     val mem_init = Array.fill[Byte](1024)(0.toByte)
     m_axi_mem.memory.writeArray(0, mem_init)
-
-
 
     val req_axi_mem = AxiMemorySim(dut.io.req_axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads=128,
@@ -90,20 +87,6 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
     dut.clockDomain.waitSampling(10)
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
-
-//    dut.io.txnLen #= 8
-//    dut.io.txnCnt #= 2
-//    dut.io.addrOffset(0) #= 0
-//    dut.io.addrOffset(1) #= 64 * 16 * 1
-//
-//    dut.io.ap.start #= true
-
-//    dut.clockDomain.waitSamplingWhere(dut.io.ap.done.toBoolean)
-
-//      for (i <- 0 until 2) {
-//        println(s"txnExeCnt($i)=${dut.io.txnExeCnt(i).toBigInt}")
-//        println(s"txnAbortCnt($i)=${dut.io.txnAbortCnt(i).toBigInt}")
-//      }
 
   }
 

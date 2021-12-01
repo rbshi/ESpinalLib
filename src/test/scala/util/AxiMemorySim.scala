@@ -1,21 +1,14 @@
-package esim
+package util
+
+// it's a very simple model, should be improved
 
 import spinal.core._
-import spinal.sim._
 import spinal.core.sim._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi._
 
+import java.nio.file.{Files, Paths}
 import scala.collection.mutable
-import scala.collection.concurrent.TrieMap
-import java.nio.file.Paths
-import java.nio.file.Files
-import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
-import javax.imageio.ImageIO
-import java.io.File
-import java.awt.image.Raster
-import java.awt.image.DataBufferByte
 import scala.util.Random
 
 class MemoryPage(size : Int) {

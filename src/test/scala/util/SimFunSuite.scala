@@ -10,7 +10,6 @@ import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config}
 import scala.collection._
 import scala.util.Random
 import scala.math._
-import esim._
 import spinal.lib.bus.amba4.axilite.AxiLite4
 import spinal.lib.{master, slave}
 
@@ -56,8 +55,6 @@ trait SimFunSuite{
     r.join()
     return data
   }
-
-
 
 }
 
