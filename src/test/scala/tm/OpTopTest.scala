@@ -12,23 +12,22 @@ import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
 
-import esim._
 import util._
 
 class OpTopTest extends AnyFunSuite with SimFunSuite {
 
-  def opReq2BigInt(addr: Int, data: BigInt, mode: BigInt, upgrade: BigInt): BigInt ={
-    addr + (data << 64) + (mode << (64+64)) + (upgrade << (64 + 64 + 1))
+  def opReq2BigInt(addr: Int, data: BigInt, mode: BigInt, upgrade: BigInt): BigInt = {
+    addr + (data << 64) + (mode << (64 + 64)) + (upgrade << (64 + 64 + 1))
   }
 
-  def multi_op(dut: OpTop): Unit ={
+  def multi_op(dut: OpTop): Unit = {
     dut.clockDomain.forkStimulus(period = 10)
 
     val m_axi_mem = AxiMemorySim(dut.io.m_axi, dut.clockDomain, AxiMemorySimConfig(
-      maxOutstandingReads=128,
-      maxOutstandingWrites=128,
-      readResponseDelay=10,
-      writeResponseDelay=10,
+      maxOutstandingReads = 128,
+      maxOutstandingWrites = 128,
+      readResponseDelay = 10,
+      writeResponseDelay = 10,
       useCustom = true
     ))
     m_axi_mem.start()
@@ -36,13 +35,11 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
     val mem_init = Array.fill[Byte](1024)(0.toByte)
     m_axi_mem.memory.writeArray(0, mem_init)
 
-
-
     val req_axi_mem = AxiMemorySim(dut.io.req_axi, dut.clockDomain, AxiMemorySimConfig(
-      maxOutstandingReads=128,
-      maxOutstandingWrites=128,
-      readResponseDelay=10,
-      writeResponseDelay=10,
+      maxOutstandingReads = 128,
+      maxOutstandingWrites = 128,
+      readResponseDelay = 10,
+      writeResponseDelay = 10,
       useCustom = true
     ))
     req_axi_mem.start()
@@ -51,21 +48,21 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
 
     // init txn array, each element in array is a txn with multi r/w operations
     var arrayTxn = new ArrayBuffer[mutable.ListBuffer[BigInt]]()
-    for (_ <- 0 until 2){
+    for (_ <- 0 until 2) {
       var reqQueue = new mutable.ListBuffer[BigInt]()
-      for (k <- 0 until 8){
+      for (k <- 0 until 8) {
         reqQueue += opReq2BigInt(k * 64, 0, 0, 0)
-        reqQueue += opReq2BigInt((4 + k)*64, 0, 1, 0) // write req
+        reqQueue += opReq2BigInt((4 + k) * 64, 0, 1, 0) // write req
       }
       arrayTxn += reqQueue
     }
 
     var req_mem_ptr = 0
     for (reqQueue <- arrayTxn) {
-      for (req <- reqQueue){
+      for (req <- reqQueue) {
         val reqByte = req.toByteArray
         for (ii <- reqByte.indices) {
-          req_mem_init(req_mem_ptr + ii) = reqByte(reqByte.length-1-ii) // toByteArray: the MSB is the 0th byte..
+          req_mem_init(req_mem_ptr + ii) = reqByte(reqByte.length - 1 - ii) // toByteArray: the MSB is the 0th byte..
         }
         req_mem_ptr += 64 // 512-bit lane
       }
@@ -90,20 +87,6 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
     dut.clockDomain.waitSampling(10)
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
-
-//    dut.io.txnLen #= 8
-//    dut.io.txnCnt #= 2
-//    dut.io.addrOffset(0) #= 0
-//    dut.io.addrOffset(1) #= 64 * 16 * 1
-//
-//    dut.io.ap.start #= true
-
-//    dut.clockDomain.waitSamplingWhere(dut.io.ap.done.toBoolean)
-
-//      for (i <- 0 until 2) {
-//        println(s"txnExeCnt($i)=${dut.io.txnExeCnt(i).toBigInt}")
-//        println(s"txnAbortCnt($i)=${dut.io.txnAbortCnt(i).toBigInt}")
-//      }
 
   }
 

@@ -7,12 +7,12 @@ import spinal.core._
 import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Config, Axi4CrossbarFactory}
+import util.{AxiMemorySim, AxiMemorySimConfig}
 
 import scala.collection._
 import scala.util.Random
 import scala.math._
-//import spinal.lib.bus.amba4.axi.sim._
-import esim._
+import util._
 import spinal.lib.{master, slave}
 import spinal.sim.SimThread
 
