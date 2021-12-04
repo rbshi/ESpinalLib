@@ -19,8 +19,8 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
     val op_resp = slave Stream OpResp(conf)
     val sig_txn_abort = in Bool()
     val sig_txn_end = in Bool()
-    val txn_len = in UInt(8 bits)
-    val txn_cnt = in UInt(8 bits)
+    val txn_len = in UInt(32 bits)
+    val txn_cnt = in UInt(32 bits)
     val done = out Bool()
     val start = in Bool()
     val addr_offset = in UInt(axiConfig.addressWidth bits)
@@ -36,21 +36,21 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
 
   setDefStream(io.op_req)
 
-  val txn_mem = Mem(OpReq(conf), 256)
-  val txn_mem_wr_addr = Reg(UInt(8 bits)).init(0)
+  val txn_mem = Mem(OpReq(conf), 1024)
+  val txn_mem_wr_addr = Reg(UInt(10 bits)).init(0)
   val txn_mem_wr_data = io.axi.r.data(io.op_req.getBitsWidth-1 downto 0).toDataType(OpReq(conf))
-  val txn_mem_rd_addr = Reg(UInt(8 bits)).init(0)
+  val txn_mem_rd_addr = Reg(UInt(10 bits)).init(0)
 
-  val txn_loaded_cnt = Reg(UInt(8 bits)).init(0)
+  val txn_loaded_cnt = Reg(UInt(32 bits)).init(0)
 
   io.done := (io.txn_exe_cnt === io.txn_cnt)
   io.op_resp.ready := True // bypass the op_resp
 
 
   val load_txn = new StateMachine {
-    val txn_load_cnt = Reg(UInt(8 bits)).init(0)
+    val txn_load_cnt = Reg(UInt(32 bits)).init(0)
     val load_addr = Reg(axiConfig.addressType).init(0)
-    val req_load_cnt = Reg(UInt(8 bits)).init(0)
+    val req_load_cnt = Reg(UInt(32 bits)).init(0)
 
     io.axi.ar.addr := load_addr + io.addr_offset
 
@@ -98,7 +98,7 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
 
   val sendTxn = new StateMachine {
 
-    val mem_rdcmd = Stream(UInt(8 bits))
+    val mem_rdcmd = Stream(UInt(10 bits))
     mem_rdcmd.payload := txn_mem_rd_addr
     mem_rdcmd.valid := False
     mem_rdcmd.ready := False
@@ -119,7 +119,7 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
 
     Normal.onEntry{
       // setup the start address
-      when(~flagPingPong){txn_mem_rd_addr := 0} otherwise {txn_mem_rd_addr := io.txn_len}
+      when(~flagPingPong){txn_mem_rd_addr := 0} otherwise {txn_mem_rd_addr := io.txn_len.resized}
     }
 
     Normal.whenIsActive{

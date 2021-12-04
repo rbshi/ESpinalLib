@@ -56,8 +56,8 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
   ctlReg.onRead(0)(ap_done:=False)
 
   // control reg: custom
-  val txnLen = ctlReg.createReadAndWrite(UInt(8 bits), 0x10, 0)
-  val txnCnt = ctlReg.createReadAndWrite(UInt(8 bits), 0x14, 0)
+  val txnLen = ctlReg.createReadAndWrite(UInt(32 bits), 0x10, 0)
+  val txnCnt = ctlReg.createReadAndWrite(UInt(32 bits), 0x14, 0)
 
   val addrOffset = Vec(Reg(UInt(32 bits)), numTxnMan)
   val txnExeCnt = Vec(UInt(32 bits), numTxnMan)
@@ -68,6 +68,8 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
     ctlReg.readAndWrite(txnExeCnt(i), 0x20 + 4 * i, 0)
     ctlReg.readAndWrite(txnAbortCnt(i), 0x28 + 4 * i, 0)
   }
+
+  val clkCnt = ctlReg.createReadAndWrite(UInt(32 bits), 0x30, 0).init(0)
 
   // instantiate a TxnManGrp that shares one AXI interface
   val txnManGrp = new TxnManGrp(conf, numTxnMan, axiConfig)
@@ -108,7 +110,11 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
     ap_start.clear()
     ap_idle.clear()
     runState.set()
+    // clear clkCnt
+    clkCnt := 0
   }
+
+  when(~ap_idle)(clkCnt := clkCnt + 1)
 
   runState.clearWhen(runState && reduced_opdone)
   ap_done.setWhen(runState && reduced_opdone)
@@ -124,7 +130,6 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
   (axiRdArb.io.inputs, opGrp.map(_.io.axi)).zipped.map(_ <> _)
 
 }
-
 
 
 object OpTopMain {

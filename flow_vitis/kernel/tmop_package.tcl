@@ -131,6 +131,10 @@ proc edit_core {core} {
   set_property address_offset 0x02c $reg
   set_property size           [expr {4*8}]   $reg
 
+  set reg      [::ipx::add_register -quiet "clkCnt" $addr_block]
+  set_property address_offset 0x030 $reg
+  set_property size           [expr {4*8}]   $reg
+
   set reg      [::ipx::add_register -quiet "m_axi_ptr0" $addr_block]
   set_property address_offset 0x050 $reg
   set_property size           [expr {8*8}]   $reg
