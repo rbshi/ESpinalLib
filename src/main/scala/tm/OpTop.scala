@@ -11,7 +11,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
 import util.RenameIO
 
-case class OpTop(numTxnMan: Int) extends Component with RenameIO {
+case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 
   val conf = LockTableConfig(8, 64, 8, 10, 10, 8)
 
@@ -44,7 +44,7 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
   io.req_axi.aw.len := 0
   io.req_axi.w.valid := False
   io.req_axi.w.data := 0
-  io.req_axi.w.last := False
+  io.req_axi.w.last := True // bug?
   io.req_axi.b.ready := True
 
 
@@ -65,17 +65,17 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 
   for (i <- 0 until numTxnMan){
     ctlReg.readAndWrite(addrOffset(i), 0x18 + 4 * i, 0)
-    ctlReg.readAndWrite(txnExeCnt(i), 0x20 + 4 * i, 0)
-    ctlReg.readAndWrite(txnAbortCnt(i), 0x28 + 4 * i, 0)
+    ctlReg.readAndWrite(txnExeCnt(i), 0x28 + 4 * i, 0)
+    ctlReg.readAndWrite(txnAbortCnt(i), 0x38 + 4 * i, 0)
   }
 
-  val clkCnt = ctlReg.createReadAndWrite(UInt(32 bits), 0x30, 0).init(0)
+  val clkCnt = ctlReg.createReadAndWrite(UInt(32 bits), 0x48, 0).init(0)
 
   // instantiate a TxnManGrp that shares one AXI interface
   val txnManGrp = new TxnManGrp(conf, numTxnMan, axiConfig)
 
   // instantiate LockTable of one memory channel
-  val lt = new LockTableCh(conf, numTxnMan)
+  val lt = new LockTableCh(conf, numLT)
 
   // add opStream for each TxnMan
   val opGrp = ArrayBuffer[OpStream]()
@@ -135,7 +135,7 @@ case class OpTop(numTxnMan: Int) extends Component with RenameIO {
 object OpTopMain {
   def main(args: Array[String]): Unit = {
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
-        val top = OpTop(2)
+        val top = OpTop(4, 16)
         top.renameIO()
         top.setDefinitionName("tmop")
         top

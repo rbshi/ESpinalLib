@@ -115,24 +115,51 @@ proc edit_core {core} {
   set_property address_offset 0x01c $reg
   set_property size           [expr {4*8}]   $reg
 
-  set reg      [::ipx::add_register -quiet "txnExeCnt0" $addr_block]
+  set reg      [::ipx::add_register -quiet "addrOffset2" $addr_block]
   set_property address_offset 0x020 $reg
   set_property size           [expr {4*8}]   $reg
 
-  set reg      [::ipx::add_register -quiet "txnExeCnt1" $addr_block]
+  set reg      [::ipx::add_register -quiet "addrOffset3" $addr_block]
   set_property address_offset 0x024 $reg
   set_property size           [expr {4*8}]   $reg
 
-  set reg      [::ipx::add_register -quiet "txnAbortCnt0" $addr_block]
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt0" $addr_block]
   set_property address_offset 0x028 $reg
   set_property size           [expr {4*8}]   $reg
 
-  set reg      [::ipx::add_register -quiet "txnAbortCnt1" $addr_block]
+  set reg      [::ipx::add_register -quiet "txnExeCnt1" $addr_block]
   set_property address_offset 0x02c $reg
   set_property size           [expr {4*8}]   $reg
 
-  set reg      [::ipx::add_register -quiet "clkCnt" $addr_block]
+  set reg      [::ipx::add_register -quiet "txnExeCnt2" $addr_block]
   set_property address_offset 0x030 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt3" $addr_block]
+  set_property address_offset 0x034 $reg
+  set_property size           [expr {4*8}]   $reg
+
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt0" $addr_block]
+  set_property address_offset 0x038 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt1" $addr_block]
+  set_property address_offset 0x03c $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt2" $addr_block]
+  set_property address_offset 0x040 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt3" $addr_block]
+  set_property address_offset 0x044 $reg
+  set_property size           [expr {4*8}]   $reg
+
+
+  set reg      [::ipx::add_register -quiet "clkCnt" $addr_block]
+  set_property address_offset 0x048 $reg
   set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "m_axi_ptr0" $addr_block]
@@ -169,6 +196,9 @@ set_property -dict [list CONFIG.C_PROBE2_WIDTH {6} CONFIG.C_PROBE3_WIDTH {512} C
 
 create_ip -name ila -vendor xilinx.com -library ip -version 6.2 -module_name ila_lt
 set_property -dict [list CONFIG.C_PROBE2_WIDTH {8} CONFIG.C_PROBE3_WIDTH {32} CONFIG.C_PROBE8_WIDTH {8} CONFIG.C_PROBE9_WIDTH {2} CONFIG.C_DATA_DEPTH {2048} CONFIG.C_NUM_OF_PROBES {10} CONFIG.Component_Name {ila_lt} CONFIG.C_EN_STRG_QUAL {1} CONFIG.C_ADV_TRIGGER {true} CONFIG.ALL_PROBE_SAME_MU_CNT {2}] [get_ips ila_lt]
+
+create_ip -name ila -vendor xilinx.com -library ip -version 6.2 -module_name ila_txnman
+set_property -dict [list CONFIG.C_PROBE2_WIDTH {8} CONFIG.C_PROBE3_WIDTH {32} CONFIG.C_PROBE8_WIDTH {8} CONFIG.C_PROBE9_WIDTH {2} CONFIG.C_DATA_DEPTH {2048} CONFIG.C_NUM_OF_PROBES {10} CONFIG.Component_Name {ila_txnman} CONFIG.C_EN_STRG_QUAL {1} CONFIG.C_ADV_TRIGGER {true} CONFIG.ALL_PROBE_SAME_MU_CNT {2}] [get_ips ila_txnman]
 
 
 update_compile_order -fileset sources_1

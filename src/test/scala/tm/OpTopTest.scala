@@ -27,7 +27,7 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
       maxOutstandingReads = 128,
       maxOutstandingWrites = 128,
       readResponseDelay = 10,
-      writeResponseDelay = 10,
+      writeResponseDelay = 0,
       useCustom = true
     ))
     m_axi_mem.start()
@@ -48,11 +48,12 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
 
     // init txn array, each element in array is a txn with multi r/w operations
     var arrayTxn = new ArrayBuffer[mutable.ListBuffer[BigInt]]()
-    for (_ <- 0 until 2) {
+    for (i <- 0 until 8) {
       var reqQueue = new mutable.ListBuffer[BigInt]()
       for (k <- 0 until 8) {
-        reqQueue += opReq2BigInt(k * 64, 0, 0, 0)
-        reqQueue += opReq2BigInt((4 + k) * 64, 0, 1, 0) // write req
+//        reqQueue += opReq2BigInt(k * 64, 0, 0, 0)
+//        reqQueue += opReq2BigInt((4 + k) * 64, 0, 1, 0) // write req
+        reqQueue += opReq2BigInt((i*8+k)*64, 0, 1, 0) // write req
       }
       arrayTxn += reqQueue
     }
@@ -72,16 +73,20 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
 
     // start
     setAxi4LiteReg(dut, dut.io.s_axi_control, 0x10, 8) // txnLen
-    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x14, 2) // txnCnt
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x14, 4) // txnCnt
     setAxi4LiteReg(dut, dut.io.s_axi_control, 0x18, 0) // addrOffset Op0
-    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x1c, 64 * 16 * 1) // addrOffset Op1
+    setAxi4LiteReg(dut, dut.io.s_axi_control, 0x1c, 64 * 32 * 1) // addrOffset Op1
 
     setAxi4LiteReg(dut, dut.io.s_axi_control, 0x00, 1) // ap_start
 
-    dut.clockDomain.waitSampling(1000)
+    dut.clockDomain.waitSampling(10000)
 
-    for (i <- 0 until 4) {
-      println(s"Reg[$i] = ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0x20 + 4 * i)}")
+    for (i <- 0 until 2) {
+      println(s"Reg[$i] = ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0x28 + 4 * i)}")
+    }
+
+    for (i <- 0 until 2) {
+      println(s"Reg[$i] = ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0x38 + 4 * i)}")
     }
 
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
@@ -93,7 +98,7 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
 
   test("multi_op") {
     SimConfig.withWave.compile {
-      val dut = new OpTop(2)
+      val dut = new OpTop(2, 2)
       dut
     }.doSim("multi_op", 99)(multi_op)
   }
