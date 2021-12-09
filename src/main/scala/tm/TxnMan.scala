@@ -182,11 +182,13 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       when(io.lt_resp.fire) {
         when(io.lt_resp.resp_type === LockRespType.grant) {
           // write to local lock record (lt_resp may arrive out of order)
-          txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
+          // txn_lt.write(io.lt_resp.lock_idx, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
+          // ooo arrive
+          txn_lt.write(lk_hold_cnt, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
           lk_resp_cnt := lk_resp_cnt + 1
           lk_hold_cnt := lk_hold_cnt + 1
           // when the sh lock is obtained, send axi read cmd
-          when(~io.lt_resp.lock_type) {goto(AXI_RD_REQ)}
+          when(~io.lt_resp.lock_type) {goto(AXI_RD_REQ)} // FIXME: the later coming lock_resp may be granted!
         }
 
         when(io.lt_resp.resp_type === LockRespType.abort) {
@@ -233,25 +235,23 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     mem_rdcmd.valid := False
     val mem_rddata = txn_wr_mem.streamReadSync(mem_rdcmd)
 
-    // fork mem_rddata to two stream (axi.aw, axi.w)
-//    val (mem1, mem2) = StreamFork2(mem_rddata, synchronous = true)
-//    // mem_rddata.ready := io.axi.aw.ready && io.axi.w.ready
-//    io.axi.aw.addr := mem1.addr
-//    io.axi.aw.valid := mem1.valid
-//    io.axi.w.data := mem2.data.asBits
-//    io.axi.w.valid := mem2.valid
-//    io.axi.aw.ready <> mem1.ready
-//    io.axi.w.ready <> mem2.ready
+    val rAwFire, rWFire = Reg(Bool()).init(False)
+
+    when(io.axi.aw.fire)(rAwFire.set())
+    when(io.axi.w.fire)(rWFire.set())
+
+    mem_rddata.ready := False
+    when(rAwFire && rWFire){
+      mem_rddata.ready := True
+      rAwFire.clear()
+      rWFire.clear()
+    }
 
 
-    // assume aw, w is ready in the same cycle with axiArbiter
+    io.axi.aw.valid := mem_rddata.valid && ~rAwFire
+    io.axi.w.valid := mem_rddata.valid && ~rWFire
     io.axi.aw.addr := mem_rddata.addr
-    io.axi.aw.valid := mem_rddata.valid
     io.axi.w.data := mem_rddata.data.resize(axiConf.dataWidth)
-    io.axi.w.valid := mem_rddata.valid
-    io.axi.aw.ready <> mem_rddata.ready
-//    io.axi.w.ready <> mem_rddata.ready
-
 
     when(req_rec.isActive(req_rec.TXN_END)) {
 

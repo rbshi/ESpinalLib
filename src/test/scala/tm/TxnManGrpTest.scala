@@ -108,8 +108,7 @@ class TxnManGrpTest extends AnyFunSuite with SimFunSuite {
       maxOutstandingReads=128,
       maxOutstandingWrites=128,
       readResponseDelay=10,
-      writeResponseDelay=10,
-      useCustom = true
+      writeResponseDelay=10
     ))
 
     axi_mem.start()

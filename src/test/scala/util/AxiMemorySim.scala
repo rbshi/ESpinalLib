@@ -401,78 +401,80 @@ case class AxiMemorySim(axi : Axi4, clockDomain : ClockDomain, config : AxiMemor
       if(pending_writes.length >= config.maxOutstandingWrites)
         clockDomain.waitSamplingWhere(pending_writes.length < config.maxOutstandingWrites)
     }
+
   }
 
-  // deprecated
-  def handleW(w : Stream[Axi4W], b : Stream[Axi4B]) : Unit = {
-    println("Handling AXI4 Master write...")
+//  // deprecated
+//  def handleW(w : Stream[Axi4W], b : Stream[Axi4B]) : Unit = {
+//    println("Handling AXI4 Master write...")
+//
+//    w.ready #= false
+//    b.valid #= false
+//
+//    while (true) {
+//      w.ready #= true
+//
+//      var job = pending_writes.front
+//      var count = job.burstLength
+//
+//      for (i <- 0 to job.burstLength) {
+//        clockDomain.waitSamplingWhere(w.valid.toBoolean)
+//        memory.writeBigInt(job.address + i * busWordWidth, w.payload.data.toBigInt, busWordWidth)
+//      }
+//
+//      w.ready #= false
+//
+//      clockDomain.waitSampling(config.writeResponseDelay)
+//
+//      b.id #= job.id
+//      b.valid #= true
+//      b.payload.resp #= 0
+//      clockDomain.waitSamplingWhere(b.ready.toBoolean)
+//      b.valid #= false
+//
+//      pending_writes.dequeue()
+//
+//      //println("AXI4 write: addr=0x" + job.address.toBigInt.toHexString + " count=" + (job.burstLength+1))
+//    }
+//  }
 
-    w.ready #= false
-    b.valid #= false
 
-    while (true) {
-      w.ready #= true
+    def handleW(w : Stream[Axi4W], b : Stream[Axi4B]) : Unit = {
+      println("Handling AXI4 Master write...")
 
-      var job = pending_writes.front
-      var count = job.burstLength
-
-      for (i <- 0 to job.burstLength) {
-        clockDomain.waitSamplingWhere(w.valid.toBoolean)
-        memory.writeBigInt(job.address + i * busWordWidth, w.payload.data.toBigInt, busWordWidth)
-      }
-
-      w.ready #= false
-
-      clockDomain.waitSampling(config.writeResponseDelay)
-
-      b.id #= job.id
-      b.valid #= true
-      b.payload.resp #= 0
-      clockDomain.waitSamplingWhere(b.ready.toBoolean)
+      w.ready #= false // NOTE: ready is false till there's a job
       b.valid #= false
 
-      pending_writes.dequeue()
+      while(true) {
+        clockDomain.waitSampling()
 
-      //println("AXI4 write: addr=0x" + job.address.toBigInt.toHexString + " count=" + (job.burstLength+1))
+        if(pending_writes.nonEmpty) {
+          var job = pending_writes.front
+          var count = job.burstLength
+
+          w.ready #= true
+
+          for(i <- 0 to job.burstLength) {
+            clockDomain.waitSamplingWhere(w.valid.toBoolean)
+            memory.writeBigInt(job.address + i * busWordWidth, w.payload.data.toBigInt, busWordWidth)
+          }
+
+          w.ready #= false
+
+          clockDomain.waitSampling(config.writeResponseDelay)
+
+          b.valid #= true
+          b.id #= job.id
+          b.payload.resp #= 0
+          clockDomain.waitSamplingWhere(b.ready.toBoolean)
+          b.valid #= false
+
+          pending_writes.dequeue()
+
+          //println("AXI4 write: addr=0x" + job.address.toBigInt.toHexString + " count=" + (job.burstLength+1))
+        }
+      }
     }
-  }
-
-
-  //  def handleW(w : Stream[Axi4W], b : Stream[Axi4B]) : Unit = {
-  //    println("Handling AXI4 Master write...")
-  //
-  //    w.ready #= true
-  //    b.valid #= false
-  //
-  //    while(true) {
-  //      clockDomain.waitSampling()
-  //
-  //      if(pending_writes.nonEmpty) {
-  //        var job = pending_writes.front
-  //        var count = job.burstLength
-  //
-  //        w.ready #= true
-  //
-  //        for(i <- 0 to job.burstLength) {
-  //          clockDomain.waitSamplingWhere(w.valid.toBoolean)
-  //          memory.writeBigInt(job.address + i * busWordWidth, w.payload.data.toBigInt, busWordWidth)
-  //        }
-  //
-  //        w.ready #= false
-  //
-  //        clockDomain.waitSampling(config.writeResponseDelay)
-  //
-  //        b.valid #= true
-  //        b.payload.resp #= 0
-  //        clockDomain.waitSamplingWhere(b.ready.toBoolean)
-  //        b.valid #= false
-  //
-  //        pending_writes.dequeue()
-  //
-  //        //println("AXI4 write: addr=0x" + job.address.toBigInt.toHexString + " count=" + (job.burstLength+1))
-  //      }
-  //    }
-  //  }
 
   /**
    * Handle write command, write, and write response channel as implemented

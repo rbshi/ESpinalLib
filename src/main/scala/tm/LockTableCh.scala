@@ -42,7 +42,7 @@ class LockTableCh(conf: LockTableConfig, numLT: Int) extends Component{
     // redefine addr
     val addrLowBit = UInt(log2Up(numLT) bits)
     addrLowBit := i
-    (arrayLT(i).io.lock_resp.lock_addr(conf.unitAddrWidth-1 downto log2Up(numLT)) ## addrLowBit).asUInt <> lockRespArb.io.inputs(i).lock_addr
+    lockRespArb.io.inputs(i).lock_addr := (arrayLT(i).io.lock_resp.lock_addr ## addrLowBit).asUInt.resized
     arrayLT(i).io.lock_resp.txn_id <> lockRespArb.io.inputs(i).txn_id
     arrayLT(i).io.lock_resp.resp_type <> lockRespArb.io.inputs(i).resp_type
     arrayLT(i).io.lock_resp.lock_type <> lockRespArb.io.inputs(i).lock_type
