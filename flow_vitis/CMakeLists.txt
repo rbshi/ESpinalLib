@@ -23,7 +23,7 @@ set(OCL_COMMON_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/common/includes/xcl2)
 #FIXME: should VIVADO_INCLUDE be added in to FindVitis?
 set(CXXFLAGS -g -std=c++14 -I${Vitis_INCLUDE_DIRS} -I{OCL_COMMON_INCLUDE} -I${XRT_ROOT}/include -I${VITIS_ROOT}/../../Vivado/${Vitis_VERSION}/include -luuid)
 set(LDFLAGS -L${Vitis_LIBRARIES} -lOpenCL -pthread -L${XRT_ROOT}/lib)
-set(HOST_SRC ${OCL_COMMON_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/src/${HOST_NAME}.cpp)
+set(HOST_SRC ${OCL_COMMON_SRC} ${CMAKE_CURRENT_SOURCE_DIR}/src/${HOST_NAME}/${HOST_NAME}.cpp)
 
 include_directories(${Vitis_INCLUDE_DIRS} ${OCL_COMMON_INCLUDE})
 link_directories(${XRT_ROOT}/lib/)

@@ -84,8 +84,8 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
   }
 
   // txnMan <> LT
-  txnManGrp.io.lt_req <> lt.io.lock_req
-  txnManGrp.io.lt_resp <> lt.io.lock_resp
+  txnManGrp.io.lt_req >-> lt.io.lock_req
+  txnManGrp.io.lt_resp <-< lt.io.lock_resp
 
   // txnMan <> Op
   (txnManGrp.io.op_req, opGrp.map(_.io.op_req)).zipped.map(_ <> _)
@@ -135,7 +135,7 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 object OpTopMain {
   def main(args: Array[String]): Unit = {
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
-        val top = OpTop(4, 16)
+        val top = OpTop(4, 8)
         top.renameIO()
         top.setDefinitionName("tmop")
         top
