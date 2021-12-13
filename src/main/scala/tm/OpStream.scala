@@ -154,6 +154,13 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
         } // flip if commit
         goto(TxnStart)
       }
+
+      // bug fix: may send req very quickly, and wait for abort sig
+      when(io.sig_txn_abort){
+        io.txn_abort_cnt := io.txn_abort_cnt + 1
+        goto(TxnStart)
+      }
+
     }
   }
 

@@ -86,8 +86,8 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
   val io = TxnManIO(conf, axiConf)
   io.setDefault()
 
-  val lk_req_cnt, lk_resp_cnt, lk_hold_cnt, lk_req_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt, clean_resp_cnt = Reg(UInt(8 bits)).init(0)
-  val cntList = List(lk_req_cnt, lk_resp_cnt, lk_hold_cnt, lk_req_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt, clean_resp_cnt)
+  val lk_req_cnt, lk_resp_cnt, lk_hold_cnt, lk_req_wr_cnt, lk_hold_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt, clean_resp_cnt = Reg(UInt(8 bits)).init(0)
+  val cntList = List(lk_req_cnt, lk_resp_cnt, lk_hold_cnt, lk_req_wr_cnt, lk_hold_wr_cnt, cmt_req_cnt, cmt_resp_cnt, clean_req_cnt, clean_req_wr_cnt, clean_resp_cnt)
 
 
   val r_abort, r_to_commit, r_to_cleanup = RegInit(False)
@@ -187,6 +187,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
           txn_lt.write(lk_hold_cnt, io.lt_resp.lock_addr ## io.lt_resp.lock_type ## True)
           lk_resp_cnt := lk_resp_cnt + 1
           lk_hold_cnt := lk_hold_cnt + 1
+          when(io.lt_resp.lock_type)(lk_hold_wr_cnt := lk_hold_wr_cnt + 1)
           // when the sh lock is obtained, send axi read cmd
           when(~io.lt_resp.lock_type) {goto(AXI_RD_REQ)} // FIXME: the later coming lock_resp may be granted!
         }
@@ -255,14 +256,14 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
 
     when(req_rec.isActive(req_rec.TXN_END)) {
 
-      when(lk_req_cnt === lk_resp_cnt && !r_abort && r_to_commit && cmt_req_cnt < lk_req_wr_cnt) {
+      when(lk_req_cnt === lk_resp_cnt && ~r_abort && r_to_commit && cmt_req_cnt < lk_hold_wr_cnt) {
         mem_rdcmd.valid := True
       }
       when(mem_rdcmd.fire) {
         cmt_req_cnt := cmt_req_cnt + 1
       }
 
-      when(cmt_resp_cnt === lk_req_wr_cnt) {
+      when(lk_req_cnt === lk_resp_cnt && (cmt_resp_cnt === lk_hold_wr_cnt || r_abort)) { // bug fix: r_to_commit should be set to f after all lk_resp
         r_to_commit := False
       }
     }
@@ -304,7 +305,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
         when(mem_rddata.payload(1)){clean_req_wr_cnt := clean_req_wr_cnt + 1} // wr lock
       }
 
-      when(clean_resp_cnt === lk_hold_cnt){
+      when(clean_resp_cnt === lk_hold_cnt && lk_req_cnt === lk_resp_cnt){ // bug fix
         r_to_cleanup := False
       }
     }

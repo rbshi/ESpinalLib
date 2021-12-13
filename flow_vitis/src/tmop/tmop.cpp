@@ -20,6 +20,20 @@ void wait_for_enter(const std::string& msg)
     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 }
 
+int txn_gen(long *mem, const uint32_t txn_len, const uint32_t txn_cnt, const uint64_t tup_offs, const uint32_t n_lt, const bool lt_dist, const bool rw){
+  for (uint itxn = 0; itxn < txn_cnt; itxn++){
+    for (uint iop = 0; iop < txn_len; iop++){
+      uint64_t ntup = txn_len*itxn+iop;
+      *(mem+(tup_offs+ntup)*8) = (ntup << 6) + (lt_dist ? ntup % n_lt : 0); // addr
+      *(mem+(tup_offs+ntup)*8+1) = 0xffffffff;
+      *(mem+(tup_offs+ntup)*8+2) = rw ? 1 : 0; // rd:0, wr:1
+    }
+  }
+  return 0;
+}
+
+
+
 int main(int argc, char **argv) {
 
 
@@ -47,27 +61,18 @@ int main(int argc, char **argv) {
 
 
   // HBM[0]: txn access HBM[1]: instruction
-   int num_channel = 2;
-   int hbm_size = (1<<28); // 256MB
+  int hbm_size = (1<<28); // 256MB
 
   // allocate workload
   xrt::bo hbm_inst_buffer = xrt::bo(device, hbm_size, 0, 1); // instructions in ch1
-  auto inst_ptr = hbm_inst_buffer.map<long*>();
-  for (int i_pe=0; i_pe<numPE; i_pe++){
-    for (int i_txn=0; i_txn<txnCnt; i_txn++){
-      for (int i_inst=0; i_inst<txnLen; i_inst++){
-        int inst_line = i_pe * txnLen * txnCnt + txnLen * i_txn + i_inst;
-        int inst_offs = 8 * inst_line;
-        inst_ptr[inst_offs] = inst_line * 64 + (inst_line % numLT); // use different address for each txn inst, %numLT is to distribute the lock_req
-        inst_ptr[inst_offs+1] = 0; // data
-        inst_ptr[inst_offs+2] = 0; // upgrade:mode
-      }
-    }
+  auto inst_ptr = hbm_inst_buffer.map<long*>(); // each txn inst takes 4 long word (512 b)
+  for (int ipe=0; ipe<numPE; ipe++){
+    txn_gen(inst_ptr, txnLen, txnCnt, ipe*txnCnt*txnLen, numLT, true, true);
   }
-  hbm_inst_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE, hbm_size/sizeof(long), 0);
+  hbm_inst_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE, hbm_size, 0);
 
 
-//  wait_for_enter("\nPress ENTER to continue after setting up ILA...");
+  wait_for_enter("\nPress ENTER to continue after setting up ILA...");
 
   // get the kernel and start
   std::string cu_id = std::to_string(1);
@@ -83,7 +88,8 @@ int main(int argc, char **argv) {
   auto run = krnl_inst(txnLen, txnCnt, addr_offs[0], addr_offs[1], addr_offs[2], addr_offs[3]); // 4 PE
 
   std::cout << "Kernel starts..." << std::endl;
-  auto state = run.wait();
+  // auto state = run.wait();
+  sleep(1);
 
 
   int reg_execnt_offs = 24 + numPE * 4;

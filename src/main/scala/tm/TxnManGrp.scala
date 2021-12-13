@@ -41,7 +41,7 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
 
 
   // arbiter lt_req
-  val lockReqArb = StreamArbiterFactory.roundRobin.noLock.build(LockReq(conf), numTxnMan)
+  val lockReqArb = StreamArbiterFactory.lowerFirst.noLock.build(LockReq(conf), numTxnMan) // roundRobin will hangup...
   for (i <- 0 until numTxnMan){
     arrayTxnMan(i).io.lt_req >> lockReqArb.io.inputs(i)
     arrayTxnMan(i).io.lt_req.noCombLoopCheck // FIXME
