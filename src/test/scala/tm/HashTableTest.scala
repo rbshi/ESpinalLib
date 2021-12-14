@@ -29,18 +29,26 @@ class HashTableTest extends AnyFunSuite {
   def insert_search_delete(dut: HashTableDUT): Unit = {
     dut.clockDomain.forkStimulus(period = 10)
 
+    // default sig
     dut.io.ht_clear_ram_run #= false
     dut.io.dt_clear_ram_run #= false
     dut.io.update_en #= false
     dut.io.update_addr #= 0
     dut.io.update_data #= 0
+    dut.io.ht_cmd_if.valid #= false
+
+
+
+
+    // wait for 1200 cycles for ht initialization
+    dut.clockDomain.waitSampling(1200)
 
     var simHT = mutable.Map.empty[Int, Int]
 
     val prepCmd = fork {
       // init hash table for sim
       val r = new Random()
-      val sizeHT = 1024 // 10-bit tableAddr
+      val sizeHT = 16 // 10-bit tableAddr
       for (a <- 1 to sizeHT) {
         simHT += a * 8 -> (a % 256)
       }

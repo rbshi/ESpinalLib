@@ -23,7 +23,7 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
   def multi_op(dut: OpTop): Unit = {
     val numPE = 4
     val numLT = 16
-    val txnCnt = 20
+    val txnCnt = 4
     val txnLen = 8
 
     // default
@@ -60,7 +60,7 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
       for (i <- 0 until txnCnt) {
         var reqQueue = new mutable.ListBuffer[BigInt]()
         for (k <- 0 until txnLen) {
-          reqQueue += opReq2BigInt((i * txnLen + k) * 64 + (i * txnLen + k)%numLT, 0x1111, 1, 0) // write req
+          reqQueue += opReq2BigInt(k+i*txnLen, k+i*txnLen+j*txnLen*txnCnt, 1, 0) // write req
         }
         arrayTxn += reqQueue
       }
@@ -78,6 +78,8 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
     }
     // init to
     req_axi_mem.memory.writeArray(0, req_mem_init)
+
+
 
     // start
     setAxi4LiteReg(dut, dut.io.s_axi_control, 0x10, txnLen) // txnLen
@@ -104,6 +106,16 @@ class OpTopTest extends AnyFunSuite with SimFunSuite {
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
     dut.clockDomain.waitSampling(10)
     println(s"Ctrl reg= ${readAxi4LiteReg(dut, dut.io.s_axi_control, 0)}")
+
+
+    for (j <- 0 until numPE) {
+      for (i <- 0 until txnCnt) {
+        for (k <- 0 until txnLen) {
+          val idxTuple = k+i*txnLen+j*txnLen*txnCnt
+          println(s"Tuple[$idxTuple]=${m_axi_mem.memory.readBigInt(idxTuple*64, 64)}")
+        }
+      }
+    }
 
   }
 

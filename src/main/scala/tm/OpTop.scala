@@ -13,6 +13,7 @@ import util.RenameIO
 
 case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 
+  // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth, key2AddrShift
   val conf = LockTableConfig(8, 64, 8, 10, 10, 8)
 
   val axiConfig = Axi4Config(

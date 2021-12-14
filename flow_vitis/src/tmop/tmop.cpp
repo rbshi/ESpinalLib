@@ -112,9 +112,6 @@ int main(int argc, char **argv) {
   }
 
 
-
-
-
 //   if (xclbin_fnm.empty())
 //     throw std::runtime_error("FAILED_TEST\nNo xclbin specified");
 

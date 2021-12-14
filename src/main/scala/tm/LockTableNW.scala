@@ -14,7 +14,7 @@ object LockRespType extends SpinalEnum{
 }
 
 
-case class LockTableConfig(txnIDWidth:Int, unitAddrWidth:Int, htBucketWidth:Int, htTableWidth:Int, llTableWidth:Int, queueCntWidth:Int){
+case class LockTableConfig(txnIDWidth:Int, unitAddrWidth:Int, htBucketWidth:Int, htTableWidth:Int, llTableWidth:Int, queueCntWidth:Int, key2AddrShift:Int=6){
   // value of ht: lock_status ()
   def htValWidth = 1 + queueCntWidth
 }

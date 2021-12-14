@@ -63,7 +63,7 @@ case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
     op_resp.valid := False
 
     axi.readCmd.size := log2Up(64 / 8)
-    //    axi.readCmd.addr := 0
+    axi.readCmd.addr := 0
     axi.readCmd.id := 0
     axi.readCmd.valid := False
     axi.readCmd.len := 0
@@ -155,9 +155,6 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       io.lt_req.valid := io.op_req.valid
     }
 
-    // axi
-    io.axi.ar.addr := io.op_req.addr
-
     when(io.lt_req.fire && ~io.lt_req.lock_release && io.op_req.txn_sig === 0) { // normal mode
       lk_req_cnt := lk_req_cnt + 1
       when(io.op_req.mode) {
@@ -207,7 +204,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     AXI_RD_REQ.whenIsActive {
       // send read cmd
       // FIXME: lt_resp may be ooo, so is the rd address
-      io.axi.ar.addr := r_lock_addr
+      io.axi.ar.addr := (r_lock_addr << conf.key2AddrShift).resized
       io.axi.ar.valid := True
       when(io.axi.ar.fire)(goto(WAIT_RESP))
     }
@@ -251,7 +248,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
 
     io.axi.aw.valid := mem_rddata.valid && ~rAwFire
     io.axi.w.valid := mem_rddata.valid && ~rWFire
-    io.axi.aw.addr := mem_rddata.addr
+    io.axi.aw.addr := (mem_rddata.addr << conf.key2AddrShift).resized
     io.axi.w.data := mem_rddata.data.resize(axiConf.dataWidth)
 
     when(req_rec.isActive(req_rec.TXN_END)) {
