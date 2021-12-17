@@ -10,7 +10,7 @@ module synfifo #(
     output reg [D_WIDTH-1:0] buf_out,
     output reg buf_empty,
     output reg buf_full,
-    output [A_WIDTH:0] fifo_counter   
+    output reg [A_WIDTH:0] fifo_counter
 );
 
 localparam FIFO_SIZE = 2**A_WIDTH;

@@ -29,7 +29,7 @@ module data_table(
 );
 localparam D_WIDTH     = $bits( ram_data_t );
 localparam A_WIDTH     = HEAD_PTR_WIDTH;
-localparam RAM_LATENCY = 1;
+localparam RAM_LATENCY = 2; // for 300MHz timing
 
 localparam SEARCH_ = 0;
 localparam INSERT_ = 1;
@@ -88,8 +88,8 @@ head_table_if head_table_delete_if(
   .clk( clk_i )
 );
 
-data_table_search_wrapper #( 
-  .ENGINES_CNT                            ( 5                          ),
+data_table_search_wrapper_1eng #( 
+  // .ENGINES_CNT                            ( 1                          ),
   .RAM_LATENCY                            ( RAM_LATENCY                )
 ) sea_eng (
 
@@ -406,7 +406,7 @@ assign clear_ram_done_o = clear_ram_flag && ( clear_addr == '1 );
 true_dual_port_ram_single_clock #( 
   .DATA_WIDTH                             ( D_WIDTH           ), 
   .ADDR_WIDTH                             ( A_WIDTH           ), 
-  .REGISTER_OUT                           ( 0                 )
+  .REGISTER_OUT                           ( RAM_LATENCY -1    )
 ) data_ram (
   .clk                                    ( clk_i             ),
 

@@ -41,7 +41,7 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
   io.req_axi.aw.addr := 0
   io.req_axi.aw.valid := False
   io.req_axi.aw.id := 0
-  io.req_axi.aw.size := 0
+  io.req_axi.aw.size := log2Up(512/8)
   io.req_axi.aw.len := 0
   io.req_axi.w.valid := False
   io.req_axi.w.data := 0
@@ -57,12 +57,12 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
   ctlReg.onRead(0)(ap_done:=False)
 
   // control reg: custom
-  val txnLen = ctlReg.createReadAndWrite(UInt(32 bits), 0x10, 0)
-  val txnCnt = ctlReg.createReadAndWrite(UInt(32 bits), 0x14, 0)
+  val txnLen = ctlReg.createReadAndWrite(UInt(8 bits), 0x10, 0)
+  val txnCnt = ctlReg.createReadAndWrite(UInt(16 bits), 0x14, 0)
 
   val addrOffset = Vec(Reg(UInt(32 bits)), numTxnMan)
-  val txnExeCnt = Vec(UInt(32 bits), numTxnMan)
-  val txnAbortCnt = Vec(UInt(32 bits), numTxnMan)
+  val txnExeCnt = Vec(UInt(16 bits), numTxnMan)
+  val txnAbortCnt = Vec(UInt(16 bits), numTxnMan)
 
   for (i <- 0 until numTxnMan){
     ctlReg.readAndWrite(addrOffset(i), 0x18 + 4 * i, 0)
@@ -85,12 +85,12 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
   }
 
   // txnMan <> LT
-  txnManGrp.io.lt_req >-> lt.io.lock_req
-  txnManGrp.io.lt_resp <-< lt.io.lock_resp
+  txnManGrp.io.lt_req >/-> lt.io.lock_req // pipelined
+  txnManGrp.io.lt_resp <-/< lt.io.lock_resp // pipelined
 
   // txnMan <> Op
-  (txnManGrp.io.op_req, opGrp.map(_.io.op_req)).zipped.map(_ <> _)
-  (txnManGrp.io.op_resp, opGrp.map(_.io.op_resp)).zipped.map(_ <> _)
+  (txnManGrp.io.op_req, opGrp.map(_.io.op_req)).zipped.map(_ << _) // pipelined
+  (txnManGrp.io.op_resp, opGrp.map(_.io.op_resp)).zipped.map(_ >> _) // pipelined
   (txnManGrp.io.sig_txn_abort, opGrp.map(_.io.sig_txn_abort)).zipped.map(_ <> _)
   (txnManGrp.io.sig_txn_end, opGrp.map(_.io.sig_txn_end)).zipped.map(_ <> _)
 
@@ -125,9 +125,9 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 
   // req_axi <> Op axi via arbiter
   val axiRdArb = Axi4ReadOnlyArbiter(axiConfig, numTxnMan)
-  // donot use to readonly here
-  axiRdArb.io.output.ar <> io.req_axi.ar
-  axiRdArb.io.output.r <> io.req_axi.r
+  // pipe the axi interface
+  axiRdArb.io.output.ar >/->  io.req_axi.ar
+  axiRdArb.io.output.r <-/< io.req_axi.r
   (axiRdArb.io.inputs, opGrp.map(_.io.axi)).zipped.map(_ <> _)
 
 }
@@ -136,7 +136,7 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 object OpTopMain {
   def main(args: Array[String]): Unit = {
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
-        val top = OpTop(4, 8)
+        val top = OpTop(4, 16)
         top.renameIO()
         top.setDefinitionName("tmop")
         top

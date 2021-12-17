@@ -77,9 +77,10 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
     arrayTxnMan(i).io.axi.b <> axiWrArb.io.inputs(i).b
   }
 
-  io.axi.ar <> axiRdArb.io.output.ar
-  io.axi.r <> axiRdArb.io.output.r
-  io.axi.aw <> axiWrArb.io.output.aw
-  io.axi.w <> axiWrArb.io.output.w
-  io.axi.b <> axiWrArb.io.output.b
+  // pipe the axi interface
+  io.axi.ar <-/< axiRdArb.io.output.ar
+  io.axi.r >/-> axiRdArb.io.output.r
+  io.axi.aw <-/< axiWrArb.io.output.aw
+  io.axi.w <-/< axiWrArb.io.output.w
+  io.axi.b >/-> axiWrArb.io.output.b
 }

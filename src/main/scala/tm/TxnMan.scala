@@ -62,13 +62,13 @@ case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
     op_req.ready := False
     op_resp.valid := False
 
-    axi.readCmd.size := log2Up(64 / 8)
+    axi.readCmd.size := log2Up(512 / 8)
     axi.readCmd.addr := 0
     axi.readCmd.id := 0
     axi.readCmd.valid := False
     axi.readCmd.len := 0
 //    axi.writeCmd.valid := False
-    axi.writeCmd.size := 0
+    axi.writeCmd.size := log2Up(512 / 8) // 3'b110: 64Byte/line
 //    axi.writeCmd.addr := 0
     axi.writeCmd.id := 0
     axi.writeCmd.len := 0
@@ -134,6 +134,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
       io.op_req.ready := False
       when(!r_to_commit && !r_to_cleanup) {
         io.sig_txn_end := True
+//        r_abort.clear() // fix
         goto(TXN_START)
       } // finish txn commit / abort
     }
@@ -220,7 +221,8 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
     }
     // write resp
     io.axi.b.ready := True
-    when(io.axi.b.fire) {
+
+    when(io.axi.w.fire) {
       cmt_resp_cnt := cmt_resp_cnt + 1
     }
   }

@@ -115,6 +115,7 @@ class hash_table_top(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth
   addRTLPath("rtl_src/HashTable/data_table_insert2.sv")
   addRTLPath("rtl_src/HashTable/data_table_search.sv")
   addRTLPath("rtl_src/HashTable/data_table_search_wrapper.sv")
+  addRTLPath("rtl_src/HashTable/data_table_search_wrapper_1eng.sv")
   addRTLPath("rtl_src/HashTable/empty_ptr_storage.sv")
   addRTLPath("rtl_src/HashTable/synfifo.v")
   addRTLPath("rtl_src/HashTable/hash_table_top.sv")
