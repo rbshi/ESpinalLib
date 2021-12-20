@@ -14,7 +14,9 @@ import util.RenameIO
 case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 
   // txnIDWidth, unitAddrWidth, htBucketWidth, htTableWidth, llTableWidth, queueCntWidth, key2AddrShift
-  val conf = LockTableConfig(8, 64, 8, 10, 10, 8)
+  // unitAddrWidth (of each channel): log2Up(256MB/64B(per tuple))
+//  val conf = LockTableConfig(8, 64, 8, 10, 10, 8, 6)
+  val conf = LockTableConfig(8, 22, 6, 9, 4, 4, 6)
 
   val axiConfig = Axi4Config(
     addressWidth = 64,
@@ -60,7 +62,7 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
   val txnLen = ctlReg.createReadAndWrite(UInt(8 bits), 0x10, 0)
   val txnCnt = ctlReg.createReadAndWrite(UInt(16 bits), 0x14, 0)
 
-  val addrOffset = Vec(Reg(UInt(32 bits)), numTxnMan)
+  val addrOffset = Vec(Reg(UInt(32 bits)), numTxnMan) // fixme: 4GB only
   val txnExeCnt = Vec(UInt(16 bits), numTxnMan)
   val txnAbortCnt = Vec(UInt(16 bits), numTxnMan)
 
@@ -97,7 +99,7 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
   // ctlReg <> Op
   opGrp.foreach(_.io.txn_len := txnLen)
   opGrp.foreach(_.io.txn_cnt := txnCnt)
-  (addrOffset, opGrp.map(_.io.addr_offset)).zipped.map(_.resize(conf.unitAddrWidth) <> _)
+  (addrOffset, opGrp.map(_.io.addr_offset)).zipped.map(_.resize(axiConfig.addressWidth) <> _)
   (txnExeCnt, opGrp.map(_.io.txn_exe_cnt)).zipped.map(_ <> _)
   (txnAbortCnt, opGrp.map(_.io.txn_abort_cnt)).zipped.map(_ <> _)
 
@@ -136,7 +138,7 @@ case class OpTop(numTxnMan: Int, numLT: Int) extends Component with RenameIO {
 object OpTopMain {
   def main(args: Array[String]): Unit = {
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
-        val top = OpTop(4, 16)
+        val top = OpTop(4, 32)
         top.renameIO()
         top.setDefinitionName("tmop")
         top

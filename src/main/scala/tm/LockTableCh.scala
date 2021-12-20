@@ -12,15 +12,17 @@ import spinal.lib.bus.amba4.axi._
 class LockTableCh(conf: LockTableConfig, numLT: Int) extends Component{
   val io = new LockTableIO(conf)
 
-  //
-  val arrayLT = Array.fill(numLT)(new LockTable(conf))
+  // change the unitAddr of each LT
+  val ltConf = LockTableConfig(conf.txnIDWidth, conf.unitAddrWidth-log2Up(numLT), conf.htBucketWidth, conf.htTableWidth, conf.llTableWidth, conf.queueCntWidth, conf.key2AddrShift)
+
+  val arrayLT = Array.fill(numLT)(new LockTable(ltConf))
 
   // dispatch lock_req
   io.lock_req.ready := False
   for (i <- 0 until numLT){
     // low bits interleave
     when(io.lock_req.lock_addr(log2Up(numLT)-1 downto 0) === i){
-      // redefine lock_addr
+      // use MSB as the lock_addr to distributed LTs
       arrayLT(i).io.lock_req.lock_addr <> io.lock_req.lock_addr(conf.unitAddrWidth-1 downto log2Up(numLT)).resized
       io.lock_req.txn_id <> arrayLT(i).io.lock_req.txn_id
       io.lock_req.lock_type <> arrayLT(i).io.lock_req.lock_type

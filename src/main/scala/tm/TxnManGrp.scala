@@ -12,7 +12,7 @@ import scala.language.postfixOps
 import scala.collection.mutable.ArrayBuffer
 
 
-class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) extends Component {
+class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config, grpID: Int=0) extends Component {
 
 
   val io = new Bundle{
@@ -31,7 +31,7 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
 
   val arrayTxnMan = ArrayBuffer[TxnMan]()
   for (i <- 0 until numTxnMan){
-    arrayTxnMan += new TxnMan(conf, outAxiConf.copy(idWidth = outAxiConf.idWidth - log2Up(numTxnMan)), i) // i: txnManID
+    arrayTxnMan += new TxnMan(conf, outAxiConf.copy(idWidth = outAxiConf.idWidth - log2Up(numTxnMan)), i + grpID * numTxnMan) // i: txnManID
   }
 
   val axiRdArb = Axi4ReadOnlyArbiter(outAxiConf, numTxnMan)
@@ -41,7 +41,7 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config) e
 
 
   // arbiter lt_req
-  val lockReqArb = StreamArbiterFactory.lowerFirst.noLock.build(LockReq(conf), numTxnMan) // roundRobin will hangup...
+  val lockReqArb = StreamArbiterFactory.roundRobin.noLock.build(LockReq(conf), numTxnMan) // roundRobin will hangup...
   for (i <- 0 until numTxnMan){
     arrayTxnMan(i).io.lt_req >> lockReqArb.io.inputs(i)
     arrayTxnMan(i).io.lt_req.noCombLoopCheck // FIXME

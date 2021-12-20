@@ -6,11 +6,11 @@
 
 package hash_table;
   
-  parameter KEY_WIDTH        = 64;
-  parameter VALUE_WIDTH      = 9; // lock_status + owner_cnt(8bit)
-  parameter BUCKET_WIDTH     = 8;
+  parameter KEY_WIDTH        = 18; // 22 - log2Up(numLT)
+  parameter VALUE_WIDTH      = 5; // lock_status + owner_cnt(4bit)
+  parameter BUCKET_WIDTH     = 6;
   parameter HASH_TYPE        = "dummy";
-  parameter TABLE_ADDR_WIDTH = 10;
+  parameter TABLE_ADDR_WIDTH = 9;
   parameter HEAD_PTR_WIDTH   = TABLE_ADDR_WIDTH;
 
   typedef enum logic [1:0] {

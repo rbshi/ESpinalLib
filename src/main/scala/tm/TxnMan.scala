@@ -10,7 +10,7 @@ import spinal.lib.fsm.StateMachine
 import scala.language.postfixOps
 
 case class OpReq(conf: LockTableConfig) extends Bundle {
-  val addr = UInt(conf.unitAddrWidth bits)
+  val addr = UInt(64 bits) // fixed here
   val data = Bits(64 bits)
   val mode = Bool() // r/w
   val upgrade = Bool() // normal / upgrade lock (sh -> ex)
@@ -142,7 +142,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
 
   val req_act = new Area {
     // lt
-    io.lt_req.lock_addr := io.op_req.addr
+    io.lt_req.lock_addr := io.op_req.addr.resized
     io.lt_req.lock_type := io.op_req.mode
     io.lt_req.lock_upgrade := io.op_req.upgrade
     io.lt_req.lock_release := False

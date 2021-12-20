@@ -62,10 +62,10 @@ uint64_t GenerateKey(int isZipFan, uint32_t g_table_size, foedus::assorted::Zipf
 int main(int argc, char **argv) {
 
   // one hbm channel, each tuple with 64 B
-  uint32_t g_table_size = (1<<28)/64;
+  uint32_t g_table_size = (1<<29)/64;
 
   if (argc != 9) {
-    cout << "Usage: ./tmop <.xclbin> txnLen txnCnt numPE wrRatio useNaive isZipFian zipFianTheta" << endl;
+    cout << "Usage: ./tmop_multi <.xclbin> txnLen txnCnt numPE wrRatio useNaive isZipFian zipFianTheta" << endl;
     return 1;
   }
 
@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
   if (xclbin_fnm.empty())
     throw std::runtime_error("FAILED_TEST\nNo xclbin specified");
 
-  std::string cu_name = "tmop";
+  std::string cu_name = "tmop_multi";
 
   auto device = xrt::device(0); // deviceIdx 0
   auto uuid = device.load_xclbin(xclbin_fnm);
@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
   int hbm_size = (1<<28); // 256MB
 
   // allocate workload
-  xrt::bo hbm_inst_buffer = xrt::bo(device, hbm_size, 0, 1); // instructions in ch1
+  xrt::bo hbm_inst_buffer = xrt::bo(device, hbm_size, 0, 2); // instructions in ch2
   auto inst_ptr = hbm_inst_buffer.map<long*>(); // each txn inst takes 4 long word (512 b)
 
   for (int ii=0; ii<txnLen*txnCnt*numPE; ii++){
@@ -183,11 +183,11 @@ int main(int argc, char **argv) {
 
   int addr_offs[numPE];
   for (int i_pe=0; i_pe<numPE; i_pe++){
-    addr_offs[i_pe] = hbm_size + i_pe * txnLen * txnCnt * 64;
+    addr_offs[i_pe] = hbm_size*2 + i_pe * txnLen * txnCnt * 64;
   }
 
 //  auto run = krnl_inst(txnLen, txnCnt, addr_offs[0], addr_offs[1]); // 2 PE
-  auto run = krnl_inst(txnLen, txnCnt, addr_offs[0], addr_offs[1], addr_offs[2], addr_offs[3]); // 4 PE
+  auto run = krnl_inst(txnLen, txnCnt, addr_offs[0], addr_offs[1], addr_offs[2], addr_offs[3], addr_offs[4], addr_offs[5], addr_offs[6], addr_offs[7]); // 4x2 PE
 
   std::cout << "Kernel starts..." << std::endl;
   // auto state = run.wait();
