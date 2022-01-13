@@ -29,8 +29,8 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
     val numPE = dut.numTxnMan
     val numLT = dut.numLT
     val numCh = dut.numCh
-    val txnCnt = 10
-    val txnLen = 16
+    val txnCnt = 5
+    val txnLen = 8
 
     // default
     dut.io.s_axi_control.ar.valid #= false
@@ -49,10 +49,12 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
         for (i <- 0 until txnCnt) {
           var reqQueue = new mutable.ListBuffer[BigInt]()
           for (k <- 0 until txnLen) {
-            // contention in ch
-            // reqQueue += opReq2BigInt(k+i*txnLen, k+i*txnLen+j*txnLen*txnCnt, 0, 0)
-            // non-contention in ch
-            reqQueue += opReq2BigInt(k + i * txnLen + j * txnLen * txnCnt, k + i * txnLen + j * txnLen * txnCnt, 0, 0)
+            // contention between every agent
+            // reqQueue += opReq2BigInt(k + i * txnLen, 0xffff, 1, 0)
+            // contention between channel
+            reqQueue += opReq2BigInt(k + i * txnLen + j * txnLen * txnCnt, 0xffff, 1, 0)
+            // non-contention
+            // reqQueue += opReq2BigInt(k + i * txnLen + j * txnLen * txnCnt + c*txnLen*txnCnt*numPE, 0xffff, 1, 0)
           }
           arrayTxn += reqQueue
         }
@@ -144,7 +146,7 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
 
   test("multi_op") {
     SimConfig.withWave.compile {
-      val dut = new OpTopMulti(4, 16, 2)
+      val dut = new OpTopMulti(4, 16, 8)
       dut
     }.doSim("multi_op", 99)(multi_op)
   }

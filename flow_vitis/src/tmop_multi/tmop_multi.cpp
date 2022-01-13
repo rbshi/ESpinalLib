@@ -108,10 +108,13 @@ int main(int argc, char **argv) {
       // std::cout << "key =" << keys.back() << "\t rw = " << rw.back() << std::endl;
     }
   } else{ // with Naive
-    for (int ii=0; ii<txnLen*txnCnt*numPE; ii++){
-      keys.push_back(ii%(txnLen*txnCnt));
-      // keys.push_back(ii);
-      rw.push_back(((double)rand() / ((double)RAND_MAX + 1)<g_wr_ratio)?true:false);
+
+    for (int ich=0; ich<2; ich++){
+      for (int ii=0; ii<txnLen*txnCnt*numPE/2; ii++){
+        // keys.push_back(ii%(txnLen*txnCnt));
+        keys.push_back(ii + ich*(1<<22));
+        rw.push_back(((double)rand() / ((double)RAND_MAX + 1)<g_wr_ratio)?true:false);
+      }      
     }
   }
 
@@ -156,22 +159,24 @@ int main(int argc, char **argv) {
   std::cout << "Finish load" << std::endl;
 
 
-  // HBM[0]: txn access HBM[1]: instruction
-  int hbm_size = (1<<28); // 256MB
+  
 
   // allocate workload
-  xrt::bo hbm_inst_buffer = xrt::bo(device, hbm_size, 0, 2); // instructions in ch2
-  auto inst_ptr = hbm_inst_buffer.map<long*>(); // each txn inst takes 4 long word (512 b)
+  std::vector<xrt::bo> hbm_req_buffer(2);
+  // std::vector<int*> hbm_req_buffer_ptr(2);
+  int hbm_size = (1<<28); // 256MB
+  for (int i = 0; i < 2; i++) {
+    hbm_req_buffer[i] = xrt::bo(device, hbm_size, 0, 2+i);
+    auto inst_ptr = hbm_req_buffer[i].map<long*>();
 
-  for (int ii=0; ii<txnLen*txnCnt*numPE; ii++){
-    *(inst_ptr+ii*8) = keys.front();
-    *(inst_ptr+ii*8+1) = 0xffffffff;
-    *(inst_ptr+ii*8+2) = rw.front() ? 1 : 0; // rd:0, wr:1
-    pop_front(keys); pop_front(rw);
+    for (int ii=0; ii<txnLen*txnCnt*numPE/2; ii++){
+      *(inst_ptr+ii*8) = keys.front();
+      *(inst_ptr+ii*8+1) = 0xffffffff;
+      *(inst_ptr+ii*8+2) = rw.front() ? 1 : 0; // rd:0, wr:1
+      pop_front(keys); pop_front(rw);
+    }
+    hbm_req_buffer[i].sync(XCL_BO_SYNC_BO_TO_DEVICE, hbm_size, 0); 
   }
-
-  hbm_inst_buffer.sync(XCL_BO_SYNC_BO_TO_DEVICE, hbm_size, 0); 
-
 
   // wait_for_enter("Setup ILA...");
 
@@ -182,8 +187,10 @@ int main(int argc, char **argv) {
   auto krnl_inst = xrt::kernel(device, uuid, krnl_name_full, 1);
 
   int addr_offs[numPE];
-  for (int i_pe=0; i_pe<numPE; i_pe++){
-    addr_offs[i_pe] = hbm_size*2 + i_pe * txnLen * txnCnt * 64;
+  for (int i_ch = 0; i_ch < 2; i_ch++){
+    for (int i_pe=0; i_pe<numPE/2; i_pe++){
+      addr_offs[i_pe+numPE/2*i_ch] = hbm_size*(2+i_ch) + i_pe * txnLen * txnCnt * 64;
+    }
   }
 
 //  auto run = krnl_inst(txnLen, txnCnt, addr_offs[0], addr_offs[1]); // 2 PE
