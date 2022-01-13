@@ -143,12 +143,12 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
 
   }
 
-
   test("multi_op") {
     SimConfig.withWave.compile {
-      val dut = new OpTopMulti(4, 16, 8)
+      val dut = new OpTopMulti(4, 16, 2)
       dut
     }.doSim("multi_op", 99)(multi_op)
+
   }
 
 }
