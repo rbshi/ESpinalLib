@@ -16,6 +16,11 @@ import util._
 
 class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
 
+  /**
+   * Transform each txn op to 512-bit entry that will be initialized to DRAM
+   *
+   * Bit organization: {upgrade(1):mode(1):data(64):addr(64)}
+   */
   def opReq2BigInt(addr: Int, data: BigInt, mode: BigInt, upgrade: BigInt): BigInt = {
     addr + (data << 64) + (mode << (64 + 64)) + (upgrade << (64 + 64 + 1))
   }
@@ -34,20 +39,23 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
 
     dut.clockDomain.forkStimulus(period = 10)
 
-
     // init txn instructions
-    val req_mem_init = Array.fill[Byte](1<<16)(0.toByte)
+    val req_mem_init = Array.fill[Byte](1<<18)(0.toByte)
 
     // init txn array, each element in array is a txn with multi r/w operations
     var arrayTxn = new ArrayBuffer[mutable.ListBuffer[BigInt]]()
-    for (j <- 0 until numPE) {
-      for (i <- 0 until txnCnt) {
-        var reqQueue = new mutable.ListBuffer[BigInt]()
-        for (k <- 0 until txnLen) {
-          reqQueue += opReq2BigInt(k+i*txnLen, k+i*txnLen+j*txnLen*txnCnt, 0, 0) // write req
-//          reqQueue += opReq2BigInt(k+i*txnLen+j*txnLen*txnCnt, k+i*txnLen+j*txnLen*txnCnt, 1, 0) // write req
+    for (c <- 0 until numCh) {
+      for (j <- 0 until numPE) {
+        for (i <- 0 until txnCnt) {
+          var reqQueue = new mutable.ListBuffer[BigInt]()
+          for (k <- 0 until txnLen) {
+            // contention in ch
+            // reqQueue += opReq2BigInt(k+i*txnLen, k+i*txnLen+j*txnLen*txnCnt, 0, 0)
+            // non-contention in ch
+            reqQueue += opReq2BigInt(k + i * txnLen + j * txnLen * txnCnt, k + i * txnLen + j * txnLen * txnCnt, 0, 0)
+          }
+          arrayTxn += reqQueue
         }
-        arrayTxn += reqQueue
       }
     }
 
@@ -62,7 +70,7 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
       }
     }
 
-    // AXI memory model
+    // AXI DRAM model
     for (iCh <- 0 until numCh) {
 
       val m_axi_mem = AxiMemorySim(dut.io.m_axi(iCh), dut.clockDomain, AxiMemorySimConfig(
@@ -73,8 +81,8 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
       ))
       m_axi_mem.start()
 
-      // init data in axi mem
-      val mem_init = Array.fill[Byte](1 << 16)(0.toByte)
+      // init data in axi mem, otherwise will show page fault
+      val mem_init = Array.fill[Byte](1 << 18)(0.toByte)
       m_axi_mem.memory.writeArray(0, mem_init)
 
       val req_axi_mem = AxiMemorySim(dut.io.req_axi(iCh), dut.clockDomain, AxiMemorySimConfig(
@@ -100,7 +108,6 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
     for (i <- 0 until numPE * numCh) {
       setAxi4LiteReg(dut, dut.io.s_axi_control, 24 + 4 * i, i * txnCnt * txnLen * 64) // addrOffset
     }
-
 
     setAxi4LiteReg(dut, dut.io.s_axi_control, 0x00, 1) // ap_start
 
