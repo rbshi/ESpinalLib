@@ -78,6 +78,14 @@ case class TxnManIO(conf: LockTableConfig, axiConf: Axi4Config) extends Bundle {
     axi.writeData.last := True
 //    axi.writeData.valid := False
 
+    if(axiConf.useBurst) {
+      axi.ar.setBurstINCR()
+      axi.aw.setBurstINCR()
+    }
+    if(axiConf.useStrb) {
+      axi.w.strb.setAll()
+    }
+
     sig_txn_end := False
   }
 }

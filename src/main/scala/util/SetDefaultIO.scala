@@ -15,4 +15,15 @@ trait SetDefaultIO {
       stream.ready := False
     }
   }
+
+  def setDefStream[T <: Data](stream: Stream[T], isMstrOutside : Boolean): Unit ={
+    if(isMstrOutside){
+      stream.ready := False
+    } else{
+      stream.valid := False
+      // fixme: zero with given bitwidth >> asBits >> toDataType (complex?)
+      stream.payload := U(0, stream.payload.getBitsWidth bits).asBits.toDataType[T](cloneOf(stream.payload))
+    }
+  }
+
 }

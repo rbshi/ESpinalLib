@@ -50,7 +50,7 @@ class OpTopMultiTest extends AnyFunSuite with SimFunSuite {
           var reqQueue = new mutable.ListBuffer[BigInt]()
           for (k <- 0 until txnLen) {
             // contention between every agent
-            // reqQueue += opReq2BigInt(k + i * txnLen, 0xffff, 1, 0)
+//             reqQueue += opReq2BigInt(k + i * txnLen, 0xffff, 1, 0)
             // contention between channel
             reqQueue += opReq2BigInt(k + i * txnLen + j * txnLen * txnCnt, 0xffff, 1, 0)
             // non-contention

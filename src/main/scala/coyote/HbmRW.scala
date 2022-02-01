@@ -28,6 +28,7 @@ case class HbmRW() extends Component with SetDefaultIO with RenameIO {
     useLen       = true
   )
 
+
   val io = new Bundle with SetDefaultIO {
     // ctrl
     val axi_ctrl = slave(AxiLite4(AxiLite4Config(64, 64)))
@@ -147,7 +148,6 @@ case class HbmRW() extends Component with SetDefaultIO with RenameIO {
       when(cntHbmReq =/= cnt)(io.axi_hbm(0).aw.valid := True)
 
       io.axi_hbm(0).w.strb.setAll()
-//      io.axi_hbm(0).w.setStrb() // strb will be 0??
       io.axi_hbm(0).w.data <> io.axis_host_sink.tdata
       io.axi_hbm(0).w.last <> io.axis_host_sink.tlast
       io.axi_hbm(0).w.valid <> io.axis_host_sink.valid

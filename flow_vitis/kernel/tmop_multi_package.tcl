@@ -20,7 +20,7 @@ proc edit_core {core} {
   set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
   set_property value        32           $bifparam
   set_property value_source constant     $bifparam
-  set bif      [::ipx::get_bus_interfaces -of $core  "req_axi_0"] 
+  set bif      [::ipx::get_bus_interfaces -of $core  "m_axi_2"]
   set bifparam [::ipx::add_bus_parameter -quiet "MAX_BURST_LENGTH" $bif]
   set_property value        64           $bifparam
   set_property value_source constant     $bifparam
@@ -30,7 +30,7 @@ proc edit_core {core} {
   set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
   set_property value        32           $bifparam
   set_property value_source constant     $bifparam
-  set bif      [::ipx::get_bus_interfaces -of $core  "req_axi_1"] 
+  set bif      [::ipx::get_bus_interfaces -of $core  "m_axi_3"]
   set bifparam [::ipx::add_bus_parameter -quiet "MAX_BURST_LENGTH" $bif]
   set_property value        64           $bifparam
   set_property value_source constant     $bifparam
@@ -40,11 +40,54 @@ proc edit_core {core} {
   set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
   set_property value        32           $bifparam
   set_property value_source constant     $bifparam
-
-  ::ipx::associate_bus_interfaces -busif "m_axi_0" -clock "ap_clk" $core 
-  ::ipx::associate_bus_interfaces -busif "req_axi_0" -clock "ap_clk" $core 
-  ::ipx::associate_bus_interfaces -busif "m_axi_1" -clock "ap_clk" $core 
-  ::ipx::associate_bus_interfaces -busif "req_axi_1" -clock "ap_clk" $core 
+  set bif      [::ipx::get_bus_interfaces -of $core  "req_axi_0"]
+  set bifparam [::ipx::add_bus_parameter -quiet "MAX_BURST_LENGTH" $bif]
+  set_property value        64           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_READ_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bif      [::ipx::get_bus_interfaces -of $core  "req_axi_1"]
+  set bifparam [::ipx::add_bus_parameter -quiet "MAX_BURST_LENGTH" $bif]
+  set_property value        64           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_READ_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bif      [::ipx::get_bus_interfaces -of $core  "req_axi_2"]
+  set bifparam [::ipx::add_bus_parameter -quiet "MAX_BURST_LENGTH" $bif]
+  set_property value        64           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_READ_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bif      [::ipx::get_bus_interfaces -of $core  "req_axi_3"]
+  set bifparam [::ipx::add_bus_parameter -quiet "MAX_BURST_LENGTH" $bif]
+  set_property value        64           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_READ_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  set bifparam [::ipx::add_bus_parameter -quiet "NUM_WRITE_OUTSTANDING" $bif]
+  set_property value        32           $bifparam
+  set_property value_source constant     $bifparam
+  ::ipx::associate_bus_interfaces -busif "m_axi_0" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "req_axi_0" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "m_axi_1" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "req_axi_1" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "m_axi_2" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "req_axi_2" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "m_axi_3" -clock "ap_clk" $core
+  ::ipx::associate_bus_interfaces -busif "req_axi_3" -clock "ap_clk" $core
 
   ::ipx::associate_bus_interfaces -busif "s_axi_control" -clock "ap_clk" $core
 
@@ -132,133 +175,258 @@ proc edit_core {core} {
 
 
 
-
   set reg      [::ipx::add_register -quiet "addrOffset0" $addr_block]
   set_property address_offset 0x18 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset1" $addr_block]
   set_property address_offset 0x1c $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset2" $addr_block]
   set_property address_offset 0x20 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset3" $addr_block]
   set_property address_offset 0x24 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset4" $addr_block]
   set_property address_offset 0x28 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset5" $addr_block]
   set_property address_offset 0x2c $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset6" $addr_block]
   set_property address_offset 0x30 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "addrOffset7" $addr_block]
   set_property address_offset 0x34 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset8" $addr_block]
+  set_property address_offset 0x38 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset9" $addr_block]
+  set_property address_offset 0x3c $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset10" $addr_block]
+  set_property address_offset 0x40 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset11" $addr_block]
+  set_property address_offset 0x44 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset12" $addr_block]
+  set_property address_offset 0x48 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset13" $addr_block]
+  set_property address_offset 0x4c $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset14" $addr_block]
+  set_property address_offset 0x50 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "addrOffset15" $addr_block]
+  set_property address_offset 0x54 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt0" $addr_block]
-  set_property address_offset 0x38 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x58 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt1" $addr_block]
-  set_property address_offset 0x3c $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x5c $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt2" $addr_block]
-  set_property address_offset 0x40 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x60 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt3" $addr_block]
-  set_property address_offset 0x44 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x64 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt4" $addr_block]
-  set_property address_offset 0x48 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x68 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt5" $addr_block]
-  set_property address_offset 0x4c $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x6c $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt6" $addr_block]
-  set_property address_offset 0x50 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x70 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnExeCnt7" $addr_block]
-  set_property address_offset 0x54 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x74 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt8" $addr_block]
+  set_property address_offset 0x78 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt9" $addr_block]
+  set_property address_offset 0x7c $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt10" $addr_block]
+  set_property address_offset 0x80 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt11" $addr_block]
+  set_property address_offset 0x84 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt12" $addr_block]
+  set_property address_offset 0x88 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt13" $addr_block]
+  set_property address_offset 0x8c $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt14" $addr_block]
+  set_property address_offset 0x90 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnExeCnt15" $addr_block]
+  set_property address_offset 0x94 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt0" $addr_block]
-  set_property address_offset 0x58 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x98 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt1" $addr_block]
-  set_property address_offset 0x5c $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0x9c $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt2" $addr_block]
-  set_property address_offset 0x60 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xa0 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt3" $addr_block]
-  set_property address_offset 0x64 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xa4 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt4" $addr_block]
-  set_property address_offset 0x68 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xa8 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt5" $addr_block]
-  set_property address_offset 0x6c $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xac $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt6" $addr_block]
-  set_property address_offset 0x70 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xb0 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "txnAbortCnt7" $addr_block]
-  set_property address_offset 0x74 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xb4 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt8" $addr_block]
+  set_property address_offset 0xb8 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt9" $addr_block]
+  set_property address_offset 0xbc $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt10" $addr_block]
+  set_property address_offset 0xc0 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt11" $addr_block]
+  set_property address_offset 0xc4 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt12" $addr_block]
+  set_property address_offset 0xc8 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt13" $addr_block]
+  set_property address_offset 0xcc $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt14" $addr_block]
+  set_property address_offset 0xd0 $reg
+  set_property size           [expr {4*8}]   $reg
+
+  set reg      [::ipx::add_register -quiet "txnAbortCnt15" $addr_block]
+  set_property address_offset 0xd4 $reg
+  set_property size           [expr {4*8}]   $reg
 
   set reg      [::ipx::add_register -quiet "clkCnt" $addr_block]
-  set_property address_offset 0x78 $reg
-  set_property size           [expr {4*8}]   $reg 
+  set_property address_offset 0xd8 $reg
+  set_property size           [expr {4*8}]   $reg
+
 
   set reg      [::ipx::add_register -quiet "m_axi_0_ptr0" $addr_block]
-  set_property address_offset 0x7c $reg
+  set_property address_offset 0xdc $reg
   set_property size           [expr {8*8}]   $reg
   set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
   set_property value m_axi_0 $regparam
 
 
   set reg      [::ipx::add_register -quiet "req_axi_0_ptr0" $addr_block]
-  set_property address_offset 0x84 $reg
+  set_property address_offset 0xe4 $reg
   set_property size           [expr {8*8}]   $reg
   set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
   set_property value req_axi_0 $regparam
 
 
   set reg      [::ipx::add_register -quiet "m_axi_1_ptr0" $addr_block]
-  set_property address_offset 0x8c $reg
+  set_property address_offset 0xec $reg
   set_property size           [expr {8*8}]   $reg
   set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
   set_property value m_axi_1 $regparam
 
 
   set reg      [::ipx::add_register -quiet "req_axi_1_ptr0" $addr_block]
-  set_property address_offset 0x94 $reg
+  set_property address_offset 0xf4 $reg
   set_property size           [expr {8*8}]   $reg
   set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
   set_property value req_axi_1 $regparam
+
+
+  set reg      [::ipx::add_register -quiet "m_axi_2_ptr0" $addr_block]
+  set_property address_offset 0xfc $reg
+  set_property size           [expr {8*8}]   $reg
+  set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
+  set_property value m_axi_2 $regparam
+
+
+  set reg      [::ipx::add_register -quiet "req_axi_2_ptr0" $addr_block]
+  set_property address_offset 0x104 $reg
+  set_property size           [expr {8*8}]   $reg
+  set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
+  set_property value req_axi_2 $regparam
+
+
+  set reg      [::ipx::add_register -quiet "m_axi_3_ptr0" $addr_block]
+  set_property address_offset 0x10c $reg
+  set_property size           [expr {8*8}]   $reg
+  set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
+  set_property value m_axi_3 $regparam
+
+
+  set reg      [::ipx::add_register -quiet "req_axi_3_ptr0" $addr_block]
+  set_property address_offset 0x114 $reg
+  set_property size           [expr {8*8}]   $reg
+  set regparam [::ipx::add_register_parameter -quiet {ASSOCIATED_BUSIF} $reg]
+  set_property value req_axi_3 $regparam
+
 
   set_property slave_memory_map_ref "s_axi_control" [::ipx::get_bus_interfaces -of $core "s_axi_control"]
 
@@ -283,7 +451,6 @@ update_compile_order -fileset sim_1
 ::ipx::package_project -root_dir $path_to_packaged -vendor xilinx.com -library RTLKernel -taxonomy /KernelIP -import_files -set_current false
 ::ipx::unload_core $path_to_packaged/component.xml
 ::ipx::edit_ip_in_project -upgrade true -name tmp_edit_project -directory $path_to_packaged $path_to_packaged/component.xml
-
 
 
 set core [::ipx::current_core]

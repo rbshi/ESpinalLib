@@ -47,11 +47,16 @@ case class Axi4StreamData(width: Int) extends Bundle {
   val tlast = Bool()
 }
 
-
-
-// Fixme: should be reordered
 // cast RdmaReqT.pkg -> RdmaBaseT
-case class RdamBaseT() extends Bundle {
+//case class RdmaBaseT() extends Bundle {
+//  val params = UInt(64 bits)
+//  val len = UInt( 32 bits)
+//  val rvaddr = UInt(48 bits)
+//  val lvaddr = UInt(48 bits)
+//}
+
+// rdma parser bit definition assumes LSB first in sv struct
+case class RdmaBaseT() extends Bundle {
   val lvaddr = UInt(48 bits)
   val rvaddr = UInt(48 bits)
   val len = UInt( 32 bits)
@@ -63,11 +68,12 @@ case class RdamBaseT() extends Bundle {
 //}
 
 case class RdmaReqT() extends Bundle {
-  val opcode = UInt(5 bits)
-  val qpn = UInt(24 bits)
-  val id = UInt(1 bits)
-  val host, mode = Bool()
-  val pkg = StreamData(192)
   val rsrvd = UInt(256-5-24-1-1-1-192 bits) // total len = 96b
+  val pkg = UInt(192 bits) // RdmaBaseT or RPC
+  val mode = Bool()
+  val host = Bool()
+  val id = UInt(1 bits)
+  val qpn = UInt(24 bits)
+  val opcode = UInt(5 bits)
 }
 

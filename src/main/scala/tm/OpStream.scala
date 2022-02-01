@@ -34,6 +34,10 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
   io.axi.ar.size := log2Up(512/8)
   io.axi.r.ready := True
 
+  if(axiConfig.useBurst) {
+    io.axi.ar.setBurstINCR()
+  }
+
   setDefStream(io.op_req)
 
   val txn_mem = Mem(OpReq(conf), 512)

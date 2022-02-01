@@ -115,7 +115,7 @@ case class OpTopMulti(numTxnMan: Int, numLT: Int, numCh: Int) extends Component 
   }
 
   for (iLTCh <- 0 until numCh) {
-    ltChReqArb(iLTCh).io.output >-> lt(iLTCh).io.lock_req // buggy if with fully pipe
+    ltChReqArb(iLTCh).io.output >/-> lt(iLTCh).io.lock_req // buggy if with fully pipe
   }
 
 
@@ -141,7 +141,7 @@ case class OpTopMulti(numTxnMan: Int, numLT: Int, numCh: Int) extends Component 
   }
 
   for (iTxnManGrp <- 0 until numCh){
-    ltChRespArb(iTxnManGrp).io.output >-> txnManGrp(iTxnManGrp).io.lt_resp // buggy if with fully pipe
+    ltChRespArb(iTxnManGrp).io.output >/-> txnManGrp(iTxnManGrp).io.lt_resp // buggy if with fully pipe
   }
 
 
@@ -187,7 +187,10 @@ case class OpTopMulti(numTxnMan: Int, numLT: Int, numCh: Int) extends Component 
     // pipe the axi interface
     axiRdArb.io.output.ar >/->  io.req_axi(iCh).ar
     axiRdArb.io.output.r <-/< io.req_axi(iCh).r
-    (axiRdArb.io.inputs, opGrp.slice(iCh*numTxnMan, (iCh+1)*numTxnMan).map(_.io.axi)).zipped.map(_ <> _)
+//    (axiRdArb.io.inputs, opGrp.slice(iCh*numTxnMan, (iCh+1)*numTxnMan).map(_.io.axi)).zipped.map(_ <> _)
+    (axiRdArb.io.inputs.map(_.ar), opGrp.slice(iCh*numTxnMan, (iCh+1)*numTxnMan).map(_.io.axi.ar)).zipped.map(_ <-/< _)
+    (axiRdArb.io.inputs.map(_.r), opGrp.slice(iCh*numTxnMan, (iCh+1)*numTxnMan).map(_.io.axi.r)).zipped.map(_ >/-> _)
+
   }
 
 }
@@ -197,7 +200,7 @@ object OpTopMultiMain {
   def main(args: Array[String]): Unit = {
     val numTxnMan = 4
     val numLT = 16
-    val numCh = 2
+    val numCh = 4
 
     SpinalConfig(defaultConfigForClockDomains = ClockDomainConfig(resetKind = SYNC, resetActiveLevel = LOW), targetDirectory = "rtl").generateVerilog{
       val top = OpTopMulti(numTxnMan, numLT, numCh)

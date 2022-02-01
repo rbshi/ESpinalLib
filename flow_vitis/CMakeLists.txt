@@ -5,6 +5,7 @@ project(vitis_prj)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Vitis)
 find_package(Threads)
+find_package(Boost COMPONENTS program_options REQUIRED)
 
 # Platform
 set(DSA_NAME "xilinx_u280_xdma_201920_3" CACHE STRING "DSA string for v++/xocc.")
@@ -30,7 +31,7 @@ link_directories(${XRT_ROOT}/lib/)
 
 # Host
 add_executable(${HOST_NAME} ${HOST_SRC})
-target_link_libraries(${HOST_NAME} ${Vitis_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} m pthread uuid xrt_coreutil)
+target_link_libraries(${HOST_NAME} ${Vitis_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} m pthread uuid xrt_coreutil ${Boost_LIBRARIES})
 
 #FIXME: only support one kernel now
 function(binary_container_build TARGET)

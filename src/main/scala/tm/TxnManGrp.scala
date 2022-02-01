@@ -46,7 +46,8 @@ class TxnManGrp(conf: LockTableConfig, numTxnMan: Int, outAxiConf: Axi4Config, g
     arrayTxnMan(i).io.lt_req >> lockReqArb.io.inputs(i)
     arrayTxnMan(i).io.lt_req.noCombLoopCheck // FIXME
   }
-  lockReqArb.io.output >> io.lt_req
+  // timing
+  lockReqArb.io.output >/-> io.lt_req
 
 
   // dispatch lt_resp

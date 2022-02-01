@@ -10,7 +10,7 @@ module ht_delay #(
   // delay ticks
   parameter DELAY          = 1,
 
-  parameter PIPELINE_READY = 0
+  parameter PIPELINE_READY = 1 // NOTE: 
 
 )
 (
