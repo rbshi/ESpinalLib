@@ -1,4 +1,4 @@
-package tm
+package tmcs
 
 import spinal.core.{UInt, _}
 import spinal.core.Mem
@@ -6,7 +6,6 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.amba4.axi._
 import spinal.lib.fsm.StateMachine
-
 import util._
 
 import scala.language.postfixOps
@@ -561,27 +560,4 @@ object TxnManCSMain {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
