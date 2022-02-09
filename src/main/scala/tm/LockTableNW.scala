@@ -13,12 +13,6 @@ object LockRespType extends SpinalEnum{
   val grant, abort, waiting, release = newElement()
 }
 
-
-//case class LockTableConfig(txnIDWidth:Int, unitAddrWidth:Int, htBucketWidth:Int, htTableWidth:Int, llTableWidth:Int, queueCntWidth:Int, key2AddrShift:Int=6){
-//  // value of ht: lock_status ()
-//  def htValWidth = 1 + queueCntWidth
-//}
-
 // value of ht
 case class LockEntry(conf: SysConfig) extends Bundle{
   val lock_status = Bool() // sh, ex
@@ -40,42 +34,6 @@ case class RamEntry(conf: SysConfig) extends Bundle{
     this.asBits.asUInt
   }
 }
-
-//case class LockReq(conf: LockTableConfig) extends Bundle{
-//  val txn_id = UInt(conf.txnIDWidth bits)
-//  val lock_addr = UInt(conf.unitAddrWidth bits)
-//  val lock_type = Bool() // sh, ex
-//  val lock_upgrade = Bool() // normal, upgrade
-//  val lock_release = Bool() // get, release
-//  val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
-//  //  val txn_ts
-//  def setDefault() = {
-//    this.txn_id := 0
-//    this.lock_addr := 0
-//    this.lock_type := False
-//    this.lock_upgrade := False
-//    this.lock_release := False
-//    this.lock_idx := 0
-//  }
-//}
-//
-//case class LockResp(conf: LockTableConfig) extends Bundle{
-//  val txn_id = UInt(conf.txnIDWidth bits)
-//  val resp_type = LockRespType() // grant, abort, waiting, release
-//  val lock_addr = UInt(conf.unitAddrWidth bits) // for test
-//  val lock_type = Bool() // for test
-//  val lock_upgrade = Bool() // normal, upgrade
-//  val lock_idx = UInt(8 bits)
-//
-//  def setDefault() = {
-//    this.txn_id := 0
-//    this.lock_addr := 0
-//    this.lock_type := False
-//    this.lock_upgrade := False
-//    this.resp_type := LockRespType.abort
-//    this.lock_idx := 0
-//  }
-//}
 
 case class LkReq(conf: SysConfig) extends Bundle{
   val nId = UInt(conf.wNId bits)
@@ -102,23 +60,6 @@ case class LkReq(conf: SysConfig) extends Bundle{
   }
 
 }
-
-//case class LkReqRmt(override val conf: SysConfig) extends LkReq(conf) {
-//  val tblOffs = UInt(32 bits) // one channel may contain multiple tables
-//  val wLen = UInt(12 bits) // len(tuple)=2^wLen
-//  override def setDefault() = {
-//    this.nId := 0
-//    this.cId := 0
-//    this.txnManId := 0
-//    this.txnId := 0
-//    this.lId := 0
-//    this.lkType := False
-//    this.lkUpgrade := False
-//    this.lkIdx := 0
-//    this.tblOffs := 0
-//    this.wLen := 0
-//  }
-//}
 
 // TODO: now LkResp bypass all info in LkReq
 case class LkResp(conf: SysConfig) extends Bundle{

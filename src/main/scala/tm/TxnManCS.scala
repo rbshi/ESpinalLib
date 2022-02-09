@@ -38,16 +38,15 @@ case class SysConfig(nNode: Int, nCh: Int, nLock:Int, nTxnMan: Int){
 }
 
 case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle {
-  //
+  // local/rmt req interface
   val lkReq, lkReqRmt = master Stream LkReq(conf)
-
+  // resp arbitrated from local / remote
+  val lkResp = slave Stream LkResp(conf)
+  // rd/wr data from/to remote
   val rdRmt = slave Stream UInt(512 bits)
   val wrRmt = master Stream UInt(512 bits)
 
-  // arbitered from local / remote
-  val lkResp = slave Stream LkResp(conf)
-
-  // data axi
+  // local data axi
   val axi = master(Axi4(axiConf))
 
   // txnMan config
@@ -111,8 +110,9 @@ case class TxnEntry(conf: SysConfig) extends Bundle {
 }
 
 /*
-* fixme: now the txns are initialized in the mem
-* Txn cmd format: lock_id (includes node_id:channel_id:lock_id), lock_mode, table_offset, data length (2^n B), (data is omitted here, included in the txn logic)
+* FIXME: now the txns are initialized in the mem
+* FIXME: each channel may contain multiple tables, the lId to address translation logic will be fixed
+* Txn entry: node_id, channel_id, lock_id, lock_type, data length (2^n B), (data is omitted here, included in the txn logic)
 * */
 
 class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component {
@@ -120,19 +120,21 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component {
   val io = TxnManCSIO(conf, axiConf)
   io.setDefault()
 
-  // lkGet and lkRlse should be arbitered and sent to io
+  // lkGet and lkRlse are be arbitrated and sent to io
   val lkReqGet, lkReqRlse, lkReqRmtGet, lkReqRmtRlse = master Stream LkReq(conf)
+  io.lkReq := StreamArbiterFactory.roundRobin.onArgs(lkReqGet, lkReqRlse)
+  io.lkReqRmt := StreamArbiterFactory.roundRobin.onArgs(lkReqRmtGet, lkReqRmtRlse)
 
   // todo: init in tb
   val txnMem = Mem(TxnEntry(conf), conf.dTxnMem)
 
-  // store wr item for commit
+  // store wr items to commit
   val txnWrMem = Mem(TxnEntry(conf), conf.dTxnMem)
-  // store lock item for release
+  // store the obtained lock items to release
   val lkMem = Mem(LkResp(conf), conf.dTxnMem)
 
   // reg array
-  // FIXME: cntRlseReq is only for mem index
+  // NOTE: cntRlseReq is only for mem index
   val cntLkReq, cntLkResp, cntLkHold, cntLkReqWr, cntLkHoldWr, cntCmtReq, cntCmtResp, cntRlseReq, cntRlseReqLoc, cntRlseReqRmt, cntRlseReqWrLoc, cntRlseReqWrRmt, cntRlseResp = Vec(Reg(UInt(conf.wMaxTxnLen bits)), conf.nTxnCS)
   val rAbort, r2Cmt, r2Rlse = Vec(RegInit(False), conf.nTxnCS)
 
@@ -143,7 +145,6 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component {
 
   /*
    * component1: lock request
-   * req get lock
    */
   val compLkReq = new StateMachine {
     val RD_HEADER = new State with EntryPoint
@@ -227,39 +228,41 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component {
 
     val rLkResp = RegNextWhen(io.lkResp, io.lkResp.fire)
     val nBeat = Reg(UInt(8 bits)).init(0)
+    val curTxnIdx = io.lkResp.txnId
+
 
     WAIT_RESP.whenIsActive {
       io.lkResp.ready := True
 
       when(io.lkResp.fire) {
+
         when(io.lkResp.respType === LockRespType.grant) {
           // note: ooo arrive
-          lkMem.write(cntLkResp(io.lkResp.txnId), io.lkResp)
+          lkMem.write(cntLkResp(curTxnIdx), io.lkResp)
 
-          cntLkResp(io.lkResp.txnId) := cntLkResp(io.lkResp.txnId) + 1
-          cntLkHold(io.lkResp.txnId) := cntLkHold(io.lkResp.txnId) + 1
+          cntLkResp(curTxnIdx) := cntLkResp(curTxnIdx) + 1
+          cntLkHold(curTxnIdx) := cntLkHold(curTxnIdx) + 1
 
-          // FIXME: should it be in a blocking way?
           when(io.lkResp.lkType){
-            cntLkHoldWr(io.lkResp.txnId) := cntLkHoldWr(io.lkResp.txnId) + 1
+            cntLkHoldWr(curTxnIdx) := cntLkHoldWr(curTxnIdx) + 1
           } otherwise {
             when(io.lkResp.nId === io.nId) (goto(LOCAL_RD_REQ)) otherwise(goto(RMT_RD_CONSUME))
           }
         }
 
         when(io.lkResp.respType === LockRespType.abort) {
-          rAbort(io.lkResp.txnId) := True
-          cntLkResp(io.lkResp.txnId) := cntLkResp(io.lkResp.txnId) + 1
+          rAbort(curTxnIdx) := True
+          cntLkResp(curTxnIdx) := cntLkResp(curTxnIdx) + 1
         }
 
         when(io.lkResp.respType === LockRespType.release) {
-          cntRlseResp(io.lkResp.txnId) := cntRlseResp(io.lkResp.txnId) + 1
+          cntRlseResp(curTxnIdx) := cntRlseResp(curTxnIdx) + 1
         }
       }
     }
 
     LOCAL_RD_REQ.whenIsActive {
-      // fixme: lId -> addr translation logic
+      // FIXME: lId -> addr translation logic
       io.axi.ar.addr := (rLkResp.lId << rLkResp.wLen) + (rLkResp.cId << conf.wChSize)
       io.axi.ar.id := rLkResp.txnId
       io.axi.ar.len := (U(1)<<rLkResp.wLen) -1
@@ -269,7 +272,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component {
       when(io.axi.ar.fire)(goto(WAIT_RESP))
     }
 
-    // REMOTE_RD data come with the lkResp
+    // REMOTE_RD data come with the lkResp, consume it! FIXME: should it be in a blocking way?
     RMT_RD_CONSUME.whenIsActive {
       io.rdRmt.ready := True
       when(io.rdRmt.fire) {
@@ -382,6 +385,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component {
         }
       }
     }
+
   }
 
 
