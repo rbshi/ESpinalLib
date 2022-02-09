@@ -45,7 +45,7 @@ case class LkReq(conf: SysConfig) extends Bundle{
   val lkUpgrade = Bool()
   val lkRelease = Bool()
   val lkIdx = UInt(conf.wLkIdx bits)
-  val wLen = UInt(12 bits) // len(tuple)=2^wLen
+  val wLen = UInt(3 bits) // len(tuple)=2^wLen
 
   def setDefault() = {
     this.nId := 0
@@ -72,7 +72,7 @@ case class LkResp(conf: SysConfig) extends Bundle{
   val lkUpgrade = Bool()
   val lkRelease = Bool()
   val lkIdx = UInt(conf.wLkIdx bits)
-  val wLen = UInt(12 bits) // len(tuple)=2^wLen
+  val wLen = UInt(3 bits) // len(tuple)=2^wLen
   val respType = LockRespType()
 
 
@@ -100,6 +100,7 @@ case class LkResp(conf: SysConfig) extends Bundle{
     ret.lkUpgrade := this.lkUpgrade
     ret.lkRelease := release
     ret.lkIdx := lkIdx
+    ret.wLen := this.wLen
     ret
   }
 
