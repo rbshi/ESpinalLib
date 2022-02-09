@@ -14,93 +14,180 @@ object LockRespType extends SpinalEnum{
 }
 
 
-case class LockTableConfig(txnIDWidth:Int, unitAddrWidth:Int, htBucketWidth:Int, htTableWidth:Int, llTableWidth:Int, queueCntWidth:Int, key2AddrShift:Int=6){
-  // value of ht: lock_status ()
-  def htValWidth = 1 + queueCntWidth
-}
+//case class LockTableConfig(txnIDWidth:Int, unitAddrWidth:Int, htBucketWidth:Int, htTableWidth:Int, llTableWidth:Int, queueCntWidth:Int, key2AddrShift:Int=6){
+//  // value of ht: lock_status ()
+//  def htValWidth = 1 + queueCntWidth
+//}
 
 // value of ht
-case class LockEntry(conf: LockTableConfig) extends Bundle{
+case class LockEntry(conf: SysConfig) extends Bundle{
   val lock_status = Bool() // sh, ex
-  val owner_cnt = UInt(conf.queueCntWidth bits)
+  val owner_cnt = UInt(conf.wOwnerCnt bits)
   def toUInt : UInt = {
     this.asBits.asUInt
   }
 }
 
-case class RamEntry(conf: LockTableConfig) extends Bundle{
+case class RamEntry(conf: SysConfig) extends Bundle{
 
   val net_ptr_val = Bool()
-  val next_ptr = UInt(conf.htTableWidth bits)
-  val owner_cnt = UInt(conf.queueCntWidth bits)
+  val next_ptr = UInt(conf.wHtTable bits)
+  val owner_cnt = UInt(conf.wOwnerCnt bits)
   val lock_status = Bool() // sh, ex
-  val key = UInt(conf.unitAddrWidth bits)
+  val key = UInt(conf.wLId bits)
 
   def toUInt : UInt = {
     this.asBits.asUInt
   }
 }
 
-case class LockReq(conf: LockTableConfig) extends Bundle{
-  val txn_id = UInt(conf.txnIDWidth bits)
-  val lock_addr = UInt(conf.unitAddrWidth bits)
-  val lock_type = Bool() // sh, ex
-  val lock_upgrade = Bool() // normal, upgrade
-  val lock_release = Bool() // get, release
-  val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
-  //  val txn_ts
+//case class LockReq(conf: LockTableConfig) extends Bundle{
+//  val txn_id = UInt(conf.txnIDWidth bits)
+//  val lock_addr = UInt(conf.unitAddrWidth bits)
+//  val lock_type = Bool() // sh, ex
+//  val lock_upgrade = Bool() // normal, upgrade
+//  val lock_release = Bool() // get, release
+//  val lock_idx = UInt(8 bits) // address index to txn manager (out of order resp)
+//  //  val txn_ts
+//  def setDefault() = {
+//    this.txn_id := 0
+//    this.lock_addr := 0
+//    this.lock_type := False
+//    this.lock_upgrade := False
+//    this.lock_release := False
+//    this.lock_idx := 0
+//  }
+//}
+//
+//case class LockResp(conf: LockTableConfig) extends Bundle{
+//  val txn_id = UInt(conf.txnIDWidth bits)
+//  val resp_type = LockRespType() // grant, abort, waiting, release
+//  val lock_addr = UInt(conf.unitAddrWidth bits) // for test
+//  val lock_type = Bool() // for test
+//  val lock_upgrade = Bool() // normal, upgrade
+//  val lock_idx = UInt(8 bits)
+//
+//  def setDefault() = {
+//    this.txn_id := 0
+//    this.lock_addr := 0
+//    this.lock_type := False
+//    this.lock_upgrade := False
+//    this.resp_type := LockRespType.abort
+//    this.lock_idx := 0
+//  }
+//}
+
+case class LkReq(conf: SysConfig) extends Bundle{
+  val nId = UInt(conf.wNId bits)
+  val cId = UInt(conf.wCId bits)
+  val lId = UInt(conf.wLId bits)
+  val txnManId = UInt(conf.wTxnManId bits)
+  val txnId = UInt(conf.wTxnId bits)
+  val lkType = Bool()
+  val lkUpgrade = Bool()
+  val lkRelease = Bool()
+  val lkIdx = UInt(conf.wLkIdx bits)
+  val wLen = UInt(12 bits) // len(tuple)=2^wLen
+
   def setDefault() = {
-    this.txn_id := 0
-    this.lock_addr := 0
-    this.lock_type := False
-    this.lock_upgrade := False
-    this.lock_release := False
-    this.lock_idx := 0
+    this.nId := 0
+    this.cId := 0
+    this.txnManId := 0
+    this.txnId := 0
+    this.lId := 0
+    this.lkType := False
+    this.lkUpgrade := False
+    this.lkIdx := 0
+    this.wLen := 0
+  }
+
+}
+
+//case class LkReqRmt(override val conf: SysConfig) extends LkReq(conf) {
+//  val tblOffs = UInt(32 bits) // one channel may contain multiple tables
+//  val wLen = UInt(12 bits) // len(tuple)=2^wLen
+//  override def setDefault() = {
+//    this.nId := 0
+//    this.cId := 0
+//    this.txnManId := 0
+//    this.txnId := 0
+//    this.lId := 0
+//    this.lkType := False
+//    this.lkUpgrade := False
+//    this.lkIdx := 0
+//    this.tblOffs := 0
+//    this.wLen := 0
+//  }
+//}
+
+// TODO: now LkResp bypass all info in LkReq
+case class LkResp(conf: SysConfig) extends Bundle{
+  val nId = UInt(conf.wNId bits)
+  val cId = UInt(conf.wCId bits)
+  val lId = UInt(conf.wLId bits)
+  val txnManId = UInt(conf.wTxnManId bits)
+  val txnId = UInt(conf.wTxnId bits)
+  val lkType = Bool()
+  val lkUpgrade = Bool()
+  val lkRelease = Bool()
+  val lkIdx = UInt(conf.wLkIdx bits)
+  val wLen = UInt(12 bits) // len(tuple)=2^wLen
+  val respType = LockRespType()
+
+
+  def setDefault() = {
+    this.nId := 0
+    this.cId := 0
+    this.txnManId := 0
+    this.txnId := 0
+    this.lId := 0
+    this.lkType := False
+    this.lkUpgrade := False
+    this.lkIdx := 0
+    this.wLen := 0
+    this.respType := LockRespType.abort
+  }
+
+  def toLkReq(release: Bool, lkIdx: UInt): LkReq = {
+    val ret = LkReq(conf)
+    ret.nId := this.nId
+    ret.cId := this.cId
+    ret.lId := this.lId
+    ret.txnManId := this.txnManId
+    ret.txnId:= this.txnId
+    ret.lkType := this.lkType
+    ret.lkUpgrade := this.lkUpgrade
+    ret.lkRelease := release
+    ret.lkIdx := lkIdx
+    ret
+  }
+
+}
+
+class LockTableIO(conf: SysConfig) extends Bundle{
+  val lkReq = slave Stream(LkReq(conf))
+  val lkResp = master Stream(LkResp(conf))
+
+  def setDefault() = {
+    this.lkReq.ready := False
+    this.lkResp.valid := False
+    this.lkResp.setDefault()
   }
 }
 
-case class LockResp(conf: LockTableConfig) extends Bundle{
-  val txn_id = UInt(conf.txnIDWidth bits)
-  val resp_type = LockRespType() // grant, abort, waiting, release
-  val lock_addr = UInt(conf.unitAddrWidth bits) // for test
-  val lock_type = Bool() // for test
-  val lock_upgrade = Bool() // normal, upgrade
-  val lock_idx = UInt(8 bits)
 
-  def setDefault() = {
-    this.txn_id := 0
-    this.lock_addr := 0
-    this.lock_type := False
-    this.lock_upgrade := False
-    this.resp_type := LockRespType.abort
-    this.lock_idx := 0
-  }
-}
-
-class LockTableIO(conf: LockTableConfig) extends Bundle{
-  val lock_req = slave Stream(LockReq(conf))
-  val lock_resp = master Stream(LockResp(conf))
-
-  def setDefault() = {
-    this.lock_req.ready := False
-    this.lock_resp.valid := False
-    this.lock_resp.setDefault()
-  }
-}
-
-
-class LockTable(conf: LockTableConfig) extends Component {
+class LockTable(conf: SysConfig) extends Component {
 
   val io = new LockTableIO(conf)
   // hash table & two linked list inside locktable
-  val ht = new HashTableDUT(conf.unitAddrWidth, conf.htValWidth, conf.htBucketWidth, conf.htTableWidth)
+  val ht = new HashTableDUT(conf.wLId, conf.wHtValNW, conf.wHtBucket, conf.wHtTable)
 
   io.setDefault()
   ht.io.setDefault()
 
   val fsm = new StateMachine {
     // stage lock_req
-    val req = RegNextWhen(io.lock_req.payload, io.lock_req.fire)
+    val req = RegNextWhen(io.lkReq.payload, io.lkReq.fire)
     // stage ht out
     val ht_lock_entry_cast = LockEntry(conf)
     ht_lock_entry_cast.assignFromBits(ht.io.ht_res_if.found_value.asBits) // wire: cast the value of ht to lock_entry
@@ -116,17 +203,17 @@ class LockTable(conf: LockTableConfig) extends Component {
 
     INSERT_TRY
       .whenIsActive{
-        val try_onwer_cnt = UInt(conf.queueCntWidth bits)
+        val try_onwer_cnt = UInt(conf.wOwnerCnt bits)
         try_onwer_cnt := 1
         ht.io.ht_res_if.ready := True
 
-        io.lock_req.ready := ht.io.ht_cmd_if.ready
+        io.lkReq.ready := ht.io.ht_cmd_if.ready
 
-        when(io.lock_req.valid){
-          ht.io.sendCmd(io.lock_req.lock_addr, (io.lock_req.lock_type ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
+        when(io.lkReq.valid){
+          ht.io.sendCmd(io.lkReq.lId, (io.lkReq.lkType ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
         }
 
-        when(io.lock_req.fire){
+        when(io.lkReq.fire){
           goto(INSET_RESP)
         }
       }
@@ -136,13 +223,13 @@ class LockTable(conf: LockTableConfig) extends Component {
         ht.io.ht_res_if.ready := True
         ht.io.update_addr := ht.io.ht_res_if.find_addr
         when(ht.io.ht_res_if.fire) {
-          when(!req.lock_release) {
+          when(!req.lkRelease) {
 
-            ht.io.update_data := (ht_ram_entry_cast.key ## req.lock_type ## (ht_ram_entry_cast.owner_cnt+1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
+            ht.io.update_data := (ht_ram_entry_cast.key ## req.lkType ## (ht_ram_entry_cast.owner_cnt+1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
 
             when(ht.io.ht_res_if.rescode === HashTableRetCode.ins_exist) {
               // lock exist
-              when((!req.lock_upgrade && (ht_lock_entry_cast.lock_status | req.lock_type)) || (req.lock_upgrade && ht_lock_entry_cast.owner_cnt > 1)) {
+              when((!req.lkUpgrade && (ht_lock_entry_cast.lock_status | req.lkType)) || (req.lkUpgrade && ht_lock_entry_cast.owner_cnt > 1)) {
                 r_lock_resp := LockRespType.abort // no wait
                 goto(LK_RESP)
               } otherwise {
@@ -158,7 +245,7 @@ class LockTable(conf: LockTableConfig) extends Component {
             }
           } otherwise {
 
-            ht.io.update_data := (ht_ram_entry_cast.key ## req.lock_type ## (ht_ram_entry_cast.owner_cnt-1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
+            ht.io.update_data := (ht_ram_entry_cast.key ## req.lkType ## (ht_ram_entry_cast.owner_cnt-1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
 
             // lock release, ht.io.ht_res_if.rescode must be ins_exist. 2 cases: cnt-- or del entry (cost a few cycles)
             when(ht_ram_entry_cast.owner_cnt===1){
@@ -177,9 +264,8 @@ class LockTable(conf: LockTableConfig) extends Component {
     DEL_CMD
       .whenIsActive{
         ht.io.ht_res_if.ready := True
-        ht.io.sendCmd(req.lock_addr, 0, HashTableOpCode.del)
+        ht.io.sendCmd(req.lId, 0, HashTableOpCode.del)
         when(ht.io.ht_cmd_if.fire){goto(DEL_RESP)}
-
       }
 
     DEL_RESP
@@ -193,14 +279,14 @@ class LockTable(conf: LockTableConfig) extends Component {
       .whenIsActive{
         ht.io.ht_res_if.ready := True
 
-        io.lock_resp.valid := True
-        io.lock_resp.txn_id := req.txn_id
-        io.lock_resp.lock_addr := req.lock_addr
-        io.lock_resp.lock_type := req.lock_type
-        io.lock_resp.lock_upgrade := req.lock_upgrade
-        io.lock_resp.resp_type := r_lock_resp
-        io.lock_resp.lock_idx := req.lock_idx
-        when(io.lock_resp.fire){goto(INSERT_TRY)}
+        io.lkResp.valid := True
+        io.lkResp.txnId := req.txnId
+        io.lkResp.lId := req.lId
+        io.lkResp.lkType := req.lkType
+        io.lkResp.lkUpgrade := req.lkUpgrade
+        io.lkResp.respType := r_lock_resp
+        io.lkResp.lkIdx := req.lkIdx
+        when(io.lkResp.fire){goto(INSERT_TRY)}
       }
   }
 

@@ -146,7 +146,7 @@ class OpStream(conf: LockTableConfig, axiConfig: Axi4Config) extends Component w
 
     TxnEnd.whenIsActive{
       io.op_req.valid := True
-      io.op_req.sendReq(0, 0, False, False, 2) // txn_start
+      io.op_req.sendReq(0, 0, False, False, 2) // txn_end
       when(io.op_req.fire){goto(WaitClean)}
     }
 

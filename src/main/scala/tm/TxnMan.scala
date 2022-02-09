@@ -236,7 +236,7 @@ class TxnMan(conf: LockTableConfig, axiConf: Axi4Config, txnManID: Int) extends 
   }
 
 
-  val txn_commit = new Area {
+    val txn_commit = new Area {
 
     val mem_rdcmd = Stream(UInt(8 bits))
     mem_rdcmd.payload := cmt_req_cnt
