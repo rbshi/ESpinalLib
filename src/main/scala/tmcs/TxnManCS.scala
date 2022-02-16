@@ -16,12 +16,12 @@ import scala.language.postfixOps
 case class SysConfig(nNode: Int, nCh: Int, nLock:Int, nTxnMan: Int){
   val wNId = log2Up(nNode)
   val wCId = log2Up(nCh)
-  val wLId = log2Up(nLock)
+  val wTId = log2Up(nLock)
   val wTxnManId = log2Up(nTxnMan)
 
   // txnMan
   val nTxnCS = 64 // concurrent txn count, limited by axi arid (6 bits)
-  val maxTxnLen = 64 // max len of each txn, space of on-chip mem
+  val maxTxnLen = 64 // max len of each txn, space of on-chip mem (include the txnHd)
   val wMaxTxnLen = log2Up(maxTxnLen)
   val wLkIdx = log2Up(maxTxnLen) // lkIdx in one Txn, for OoO response
   val wTxnId = log2Up(nTxnCS)
@@ -34,8 +34,32 @@ case class SysConfig(nNode: Int, nCh: Int, nLock:Int, nTxnMan: Int){
   val wHtValNW = 1 + wOwnerCnt
   val wHtBucket = 6
   val wHtTable = 9
+  val nLtPart = 1
 
   val wChSize = 28 // 256MB of each channel (used as offset for global addressing)
+}
+
+case class TxnEntry(conf: SysConfig) extends Bundle {
+  val nId = UInt(conf.wNId bits)
+  val cId = UInt(conf.wCId bits)
+  val tId = UInt(conf.wTId bits)
+  val lkType = Bits(2 bits)
+  val wLen = UInt(3 bits) // len(tuple)=2^wLen; maxLen = 64B << 7 = 8192 B
+
+  def toLkReq(txnManId: UInt, curTxnId: UInt, release: Bool, lkIdx: UInt): LkReq = {
+    val ret = LkReq(conf)
+    ret.nId := this.nId
+    ret.cId := this.cId
+    ret.tId := this.tId
+    ret.txnManId := txnManId
+    ret.txnId:= curTxnId
+    ret.lkType := this.lkType(0)
+    ret.lkUpgrade := this.lkType(1)
+    ret.lkRelease := False
+    ret.lkIdx := lkIdx
+    ret.wLen := this.wLen
+    ret
+  }
 }
 
 case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle with SetDefaultIO {
@@ -49,9 +73,16 @@ case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle with 
   // local data axi
   val axi = master(Axi4(axiConf))
 
+  // cmd axi
+  val cmdAxi = master(Axi4(axiConf))
+
   // txnMan config
   val nId = in UInt(conf.wNId bits)
   val txnManId = in UInt(conf.wTxnManId bits)
+
+  // FIXME: control
+  val start = in Bool()
+
 
   def setDefault() = {
 
@@ -63,38 +94,33 @@ case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle with 
     axi.aw.valid.clear()
     axi.w.valid.clear()
 
-    if(axiConf.useStrb)
+    cmdAxi.ar.valid.clear()
+    cmdAxi.aw.valid.clear()
+    cmdAxi.w.valid.clear()
+
+    // cmdAxi is read only
+    cmdAxi.aw.addr := 0
+    cmdAxi.aw.id := 0
+    cmdAxi.aw.len := 0
+    cmdAxi.aw.size := log2Up(512/8)
+    cmdAxi.aw.setBurstINCR()
+    cmdAxi.w.last := False
+    cmdAxi.w.data.clearAll()
+    cmdAxi.b.ready := True
+    cmdAxi.r.ready := False
+
+
+    if(axiConf.useStrb) {
       axi.w.strb.setAll()
+      cmdAxi.w.strb.setAll()
+    }
 
-  }
-}
-
-case class TxnEntry(conf: SysConfig) extends Bundle {
-  val nId = UInt(conf.wNId bits)
-  val cId = UInt(conf.wCId bits)
-  val lId = UInt(conf.wLId bits)
-  val lkType = Bits(2 bits)
-  val wLen = UInt(3 bits) // len(tuple)=2^wLen; maxLen = 64B << 8 = 4096B
-
-  def toLkReq(txnManId: UInt, curTxnId: UInt, release: Bool, lkIdx: UInt): LkReq = {
-    val ret = LkReq(conf)
-    ret.nId := this.nId
-    ret.cId := this.cId
-    ret.lId := this.lId
-    ret.txnManId := txnManId
-    ret.txnId:= curTxnId
-    ret.lkType := this.lkType(0)
-    ret.lkUpgrade := this.lkType(1)
-    ret.lkRelease := False
-    ret.lkIdx := lkIdx
-    ret.wLen := this.wLen
-    ret
   }
 }
 
 /*
 * FIXME: now the txns are initialized in the mem
-* FIXME: each channel may contain multiple tables, the lId to address translation logic will be fixed
+* FIXME: each channel may contain multiple tables, the tId to address translation logic will be fixed
 * Txn entry: node_id, channel_id, lock_id, lock_type, data length (2^n B), (data is omitted here, included in the txn logic)
 * */
 
@@ -111,8 +137,6 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
   for (e <- List(lkReqGetLoc, lkReqRlseLoc, lkReqGetRmt, lkReqRlseRmt))
     e.valid := False
 
-
-  // todo: init in tb
   val txnMem = Mem(TxnEntry(conf), conf.dTxnMem)
 
   // store wr items to commit
@@ -126,7 +150,8 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
   // NOTE: separate local / remote
   val cntLkReqLoc, cntLkReqRmt, cntLkRespLoc, cntLkRespRmt, cntLkHoldLoc, cntLkHoldRmt, cntLkReqWrLoc, cntLkReqWrRmt, cntLkHoldWrLoc, cntLkHoldWrRmt, cntCmtReqLoc, cntCmtReqRmt, cntCmtRespLoc, cntCmtRespRmt, cntRlseReqLoc, cntRlseReqRmt, cntRlseReqWrLoc, cntRlseReqWrRmt, cntRlseRespLoc, cntRlseRespRmt = Vec(Reg(UInt(conf.wMaxTxnLen bits)), conf.nTxnCS)
   // status register
-  val rReqDone, rAbort, rRlseDone = Vec(RegInit(False), conf.nTxnCS)
+  val rAbort = Vec(RegInit(False), conf.nTxnCS)
+  val rReqDone, rRlseDone = Vec(RegInit(True), conf.nTxnCS) // init to True, to trigger the first txnMem load and issue
 
   /*
    * component1: lock request
@@ -162,6 +187,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
         } otherwise {
           txnLen := txnMemRd.asBits(conf.wMaxTxnLen-1 downto 0).asUInt
           txnMemRdCmd.valid := False
+          goto(RD_TXN)
         }
       }
     }
@@ -262,17 +288,16 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
         when(io.lkRespLoc.respType === LockRespType.release) {
           cntRlseRespLoc(curTxnId) := cntRlseRespLoc(curTxnId) + 1
-          // TODO: timing
-          when(cntRlseRespLoc(curTxnId) === cntLkHoldLoc(curTxnId) - 1){
-            rRlseDone(curTxnId) := True
-          }
+//          when(cntRlseRespLoc(curTxnId) === cntLkHoldLoc(curTxnId) - 1){
+//            rRlseDone(curTxnId) := True
+//          }
         }
       }
     }
 
     // TODO: data path
-    // FIXME: lId -> addr translation logic
-    io.axi.ar.addr := ((rLkResp.lId << rLkResp.wLen) + (rLkResp.cId << conf.wChSize)).resized
+    // FIXME: tId -> addr translation logic
+    io.axi.ar.addr := ((rLkResp.tId << rLkResp.wLen) + (rLkResp.cId << conf.wChSize)).resized
     io.axi.ar.id := rLkResp.txnId
     io.axi.ar.len := (U(1)<<rLkResp.wLen) -1
     io.axi.ar.size := log2Up(512/8)
@@ -396,8 +421,8 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
     }
 
     // TODO: data path
-    // fixme: lId -> addr translation logic
-    io.axi.aw.addr := ((rCmtTxn.lId << rCmtTxn.wLen) + (rCmtTxn.cId << conf.wChSize)).resized
+    // fixme: tId -> addr translation logic
+    io.axi.aw.addr := ((rCmtTxn.tId << rCmtTxn.wLen) + (rCmtTxn.cId << conf.wChSize)).resized
     io.axi.aw.id := curTxnId
     io.axi.aw.len := (U(1)<<rCmtTxn.wLen) -1
     io.axi.aw.size := log2Up(512/8)
@@ -528,6 +553,91 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
           goto(CS_TXN)
         }
       }
+    }
+
+  }
+
+  /*
+  * component6: loadTxnMem
+  *
+  * */
+
+  val compLoadTxn = new StateMachine {
+    val IDLE = new State with EntryPoint
+    val CS_TXN, RD_CMDAXI, LD_TXN = new State
+
+    val curTxnId = Reg(UInt(conf.wTxnId bits)).init(0)
+    val cntTxn = Reg(UInt(10 bits)).init(0)
+    val txnOffs = curTxnId << conf.wMaxTxnLen
+
+    io.cmdAxi.ar.addr := ((cntTxn << conf.wMaxTxnLen) << log2Up(512/8)).resized
+    io.cmdAxi.ar.id := 0
+    // each 512 b contains 8 txn word (64 b / word)
+    io.cmdAxi.ar.len := ((U(1)<<(conf.wMaxTxnLen-3)) -1).resized
+    io.cmdAxi.ar.size := log2Up(512/8)
+    io.cmdAxi.ar.setBurstINCR()
+
+
+    val rCmdAxiData = RegNextWhen(io.cmdAxi.r.data, io.cmdAxi.r.fire)
+    val rCmdAxiFire = RegNext(io.cmdAxi.r.fire)
+    // 512 / 64
+    val cmdAxiDataSlice = rCmdAxiData.subdivideIn(8 slices)
+
+    val rTxnMemLd = RegInit(False)
+    val cntTxnWordInLine = Counter(8, rTxnMemLd)
+    val cntTxnWord = Counter(conf.wMaxTxnLen bits, rTxnMemLd)
+
+    // IDLE: wait start signal
+    IDLE.whenIsActive {
+      when(io.start) (goto(CS_TXN))
+    }
+
+    //
+    CS_TXN.whenIsActive {
+      when(rRlseDone(curTxnId)) {
+        goto(RD_CMDAXI)
+      } otherwise {
+        curTxnId := curTxnId + 1
+      }
+    }
+
+    // rd on cmdAxi
+    RD_CMDAXI.whenIsActive {
+      io.cmdAxi.ar.valid := True
+      when(io.cmdAxi.ar.fire) {
+        rTxnMemLd.clear()
+        cntTxnWordInLine.clear()
+        cntTxnWord.clear()
+
+        goto(LD_TXN)
+      }
+    }
+
+    // load txnMem
+    LD_TXN.whenIsActive {
+
+      io.cmdAxi.r.ready := (cntTxnWordInLine === 0 && ~rCmdAxiFire) ? True | False
+
+      when(io.cmdAxi.r.fire) (rTxnMemLd.set())
+
+      val txnSt = TxnEntry(conf)
+      txnSt.assignFromBits(cmdAxiDataSlice(cntTxnWordInLine))
+      txnMem.write(txnOffs+cntTxnWord, txnSt, rTxnMemLd)
+
+      when(cntTxnWordInLine.willOverflow) (rTxnMemLd.clear())
+      when(cntTxnWord.willOverflow) {
+        // clear all cnt register
+        val zero = UInt(conf.wMaxTxnLen bits).default(0)
+        for (e <- List(cntLkReqLoc, cntLkReqRmt, cntLkRespLoc, cntLkRespRmt, cntLkHoldLoc, cntLkHoldRmt, cntLkReqWrLoc, cntLkReqWrRmt, cntLkHoldWrLoc, cntLkHoldWrRmt, cntCmtReqLoc, cntCmtReqRmt, cntCmtRespLoc, cntCmtRespRmt, cntRlseReqLoc, cntRlseReqRmt, cntRlseReqWrLoc, cntRlseReqWrRmt, cntRlseRespLoc, cntRlseRespRmt))
+          e(curTxnId) := zero // why the clearAll() DOES NOT work?
+        for (e <- List(rReqDone, rAbort, rRlseDone))
+          e(curTxnId).clear()
+
+        //TODO: increase the result cnt
+
+        cntTxn := cntTxn + 1
+        goto(CS_TXN)
+      }  // load one txn finished
     }
 
   }

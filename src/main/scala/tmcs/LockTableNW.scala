@@ -28,7 +28,7 @@ case class RamEntry(conf: SysConfig) extends Bundle{
   val next_ptr = UInt(conf.wHtTable bits)
   val owner_cnt = UInt(conf.wOwnerCnt bits)
   val lock_status = Bool() // sh, ex
-  val key = UInt(conf.wLId bits)
+  val key = UInt(conf.wTId bits)
 
   def toUInt : UInt = {
     this.asBits.asUInt
@@ -38,7 +38,7 @@ case class RamEntry(conf: SysConfig) extends Bundle{
 case class LkReq(conf: SysConfig) extends Bundle{
   val nId = UInt(conf.wNId bits)
   val cId = UInt(conf.wCId bits)
-  val lId = UInt(conf.wLId bits)
+  val tId = UInt(conf.wTId bits)
   val txnManId = UInt(conf.wTxnManId bits)
   val txnId = UInt(conf.wTxnId bits)
   val lkType = Bool()
@@ -46,13 +46,14 @@ case class LkReq(conf: SysConfig) extends Bundle{
   val lkRelease = Bool()
   val lkIdx = UInt(conf.wLkIdx bits)
   val wLen = UInt(3 bits) // len(tuple)=2^wLen
+  // val vld = Bool() // for network usage
 
   def setDefault() = {
     this.nId := 0
     this.cId := 0
     this.txnManId := 0
     this.txnId := 0
-    this.lId := 0
+    this.tId := 0
     this.lkType := False
     this.lkUpgrade := False
     this.lkIdx := 0
@@ -65,7 +66,7 @@ case class LkReq(conf: SysConfig) extends Bundle{
 case class LkResp(conf: SysConfig) extends Bundle{
   val nId = UInt(conf.wNId bits)
   val cId = UInt(conf.wCId bits)
-  val lId = UInt(conf.wLId bits)
+  val tId = UInt(conf.wTId bits)
   val txnManId = UInt(conf.wTxnManId bits)
   val txnId = UInt(conf.wTxnId bits)
   val lkType = Bool()
@@ -81,9 +82,10 @@ case class LkResp(conf: SysConfig) extends Bundle{
     this.cId := 0
     this.txnManId := 0
     this.txnId := 0
-    this.lId := 0
+    this.tId := 0
     this.lkType := False
     this.lkUpgrade := False
+    this.lkRelease := False
     this.lkIdx := 0
     this.wLen := 0
     this.respType := LockRespType.abort
@@ -93,7 +95,7 @@ case class LkResp(conf: SysConfig) extends Bundle{
     val ret = LkReq(conf)
     ret.nId := this.nId
     ret.cId := this.cId
-    ret.lId := this.lId
+    ret.tId := this.tId
     ret.txnManId := this.txnManId
     ret.txnId:= this.txnId
     ret.lkType := this.lkType
@@ -121,8 +123,8 @@ class LockTableIO(conf: SysConfig) extends Bundle{
 class LockTable(conf: SysConfig) extends Component {
 
   val io = new LockTableIO(conf)
-  // hash table & two linked list inside locktable
-  val ht = new HashTableDUT(conf.wLId, conf.wHtValNW, conf.wHtBucket, conf.wHtTable)
+  // hash table
+  val ht = new HashTableDUT(conf.wTId-log2Up(conf.nLtPart), conf.wHtValNW, conf.wHtBucket, conf.wHtTable)
 
   io.setDefault()
   ht.io.setDefault()
@@ -152,7 +154,7 @@ class LockTable(conf: SysConfig) extends Component {
         io.lkReq.ready := ht.io.ht_cmd_if.ready
 
         when(io.lkReq.valid){
-          ht.io.sendCmd(io.lkReq.lId, (io.lkReq.lkType ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
+          ht.io.sendCmd(io.lkReq.tId, (io.lkReq.lkType ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
         }
 
         when(io.lkReq.fire){
@@ -206,7 +208,7 @@ class LockTable(conf: SysConfig) extends Component {
     DEL_CMD
       .whenIsActive{
         ht.io.ht_res_if.ready := True
-        ht.io.sendCmd(req.lId, 0, HashTableOpCode.del)
+        ht.io.sendCmd(req.tId, 0, HashTableOpCode.del)
         when(ht.io.ht_cmd_if.fire){goto(DEL_RESP)}
       }
 
@@ -223,9 +225,10 @@ class LockTable(conf: SysConfig) extends Component {
 
         io.lkResp.valid := True
         io.lkResp.txnId := req.txnId
-        io.lkResp.lId := req.lId
+        io.lkResp.tId := req.tId
         io.lkResp.lkType := req.lkType
         io.lkResp.lkUpgrade := req.lkUpgrade
+        io.lkResp.lkRelease := req.lkRelease
         io.lkResp.respType := r_lock_resp
         io.lkResp.lkIdx := req.lkIdx
         when(io.lkResp.fire){goto(INSERT_TRY)}

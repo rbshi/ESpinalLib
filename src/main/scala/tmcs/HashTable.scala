@@ -9,6 +9,7 @@ import scala.util.Random
 import scala.math._
 import util.RenameIO
 
+import os._
 
 // ins: if key exists, will update the value and return ins_exist; otherwise, ins_success
 // ins2: if key exists, will return ins_exist but NOT update the value (try insert); Meanwhile,
@@ -104,6 +105,108 @@ class hash_table_top(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth
 
   noIoPrefix()
   addPrePopTask(renameIO)
+
+  // dump pkg file input parameters
+
+  val rtlDir = os.pwd/"rtl_src"/"HashTable"
+  val pkgFile =
+    s"""
+      |// This is an auto-generated file.
+      |package hash_table;
+      |
+      |  parameter KEY_WIDTH        = $keyWidth;
+      |  parameter VALUE_WIDTH      = $valWidth;
+      |  parameter BUCKET_WIDTH     = $bucketWidth;
+      |  parameter HASH_TYPE        = "dummy";
+      |  parameter TABLE_ADDR_WIDTH = $tableAddrWidth;
+      |  parameter HEAD_PTR_WIDTH   = TABLE_ADDR_WIDTH;
+      |
+      |  typedef enum logic [1:0] {
+      |    OP_SEARCH,
+      |    OP_INSERT,
+      |    OP_DELETE,
+      |    OP_INSERT2
+      |  } ht_opcode_t;
+      |
+      |  typedef enum int unsigned {
+      |    SEARCH_FOUND,
+      |    SEARCH_NOT_SUCCESS_NO_ENTRY,
+      |
+      |    INSERT_SUCCESS,
+      |    INSERT_FIND_SAME_KEY,
+      |    INSERT_NOT_SUCCESS_TABLE_IS_FULL,
+      |
+      |    DELETE_SUCCESS,
+      |    DELETE_NOT_SUCCESS_NO_ENTRY
+      |  } ht_rescode_t;
+      |
+      |  typedef enum int unsigned {
+      |    READ_NO_HEAD,
+      |    KEY_MATCH,
+      |    KEY_NO_MATCH_HAVE_NEXT_PTR,
+      |    GOT_TAIL
+      |  } ht_data_table_state_t;
+      |
+      |  typedef enum int unsigned {
+      |    NO_CHAIN,
+      |
+      |    IN_HEAD,
+      |    IN_MIDDLE,
+      |    IN_TAIL,
+      |
+      |    IN_TAIL_NO_MATCH
+      |  } ht_chain_state_t;
+      |
+      |  typedef struct packed {
+      |    logic [HEAD_PTR_WIDTH-1:0] ptr;
+      |    logic                      ptr_val;
+      |  } head_ram_data_t;
+      |
+      |  typedef struct packed {
+      |    logic [KEY_WIDTH-1:0]      key;
+      |    logic [VALUE_WIDTH-1:0]    value;
+      |    logic [HEAD_PTR_WIDTH-1:0] next_ptr;
+      |    logic                      next_ptr_val;
+      |  } ram_data_t;
+      |
+      |  typedef struct packed {
+      |    logic        [KEY_WIDTH-1:0]    key;
+      |    logic        [VALUE_WIDTH-1:0]  value;
+      |    ht_opcode_t                     opcode;
+      |  } ht_command_t;
+      |
+      |  // pdata - data to pipeline/proccessing
+      |  typedef struct packed {
+      |    ht_command_t                cmd;
+      |
+      |    logic  [BUCKET_WIDTH-1:0]   bucket;
+      |
+      |    logic  [HEAD_PTR_WIDTH-1:0] head_ptr;
+      |    logic                       head_ptr_val;
+      |  } ht_pdata_t;
+      |
+      |  typedef struct packed {
+      |    ht_command_t                cmd;
+      |    ht_rescode_t                rescode;
+      |
+      |    logic  [BUCKET_WIDTH-1:0]   bucket;
+      |
+      |    // valid only for opcode = OP_SEARCH
+      |    logic [VALUE_WIDTH-1:0]     found_value;
+      |
+      |    // only for verification
+      |    ht_chain_state_t            chain_state;
+      |
+      |    // for INSERT_FIND_SAMEKEY
+      |    logic [TABLE_ADDR_WIDTH-1:0] find_addr;
+      |    logic [KEY_WIDTH+VALUE_WIDTH+HEAD_PTR_WIDTH+1-1:0] ram_data;
+      |
+      |  } ht_result_t;
+      |
+      |endpackage
+      |
+      |""".stripMargin
+  os.write.over(rtlDir/"hash_table_pkg.sv", pkgFile)
 
   addRTLPath("rtl_src/HashTable/hash_table_pkg.sv")
   addRTLPath("rtl_src/HashTable/CRC32_D32.sv")

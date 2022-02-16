@@ -1,13 +1,9 @@
-//-----------------------------------------------------------------------------
-// Project       : fpga-hash-table
-//-----------------------------------------------------------------------------
-// Author        : Ivan Shevchuk (github/johan92)
-//-----------------------------------------------------------------------------
 
+// This is an auto-generated file.
 package hash_table;
-  
-  parameter KEY_WIDTH        = 18; // 22 - log2Up(numLT)
-  parameter VALUE_WIDTH      = 5; // lock_status + owner_cnt(4bit)
+
+  parameter KEY_WIDTH        = 10;
+  parameter VALUE_WIDTH      = 5;
   parameter BUCKET_WIDTH     = 6;
   parameter HASH_TYPE        = "dummy";
   parameter TABLE_ADDR_WIDTH = 9;
@@ -25,20 +21,20 @@ package hash_table;
     SEARCH_NOT_SUCCESS_NO_ENTRY,
 
     INSERT_SUCCESS,
-    INSERT_FIND_SAME_KEY, 
+    INSERT_FIND_SAME_KEY,
     INSERT_NOT_SUCCESS_TABLE_IS_FULL,
 
     DELETE_SUCCESS,
     DELETE_NOT_SUCCESS_NO_ENTRY
   } ht_rescode_t;
-  
+
   typedef enum int unsigned {
     READ_NO_HEAD,
     KEY_MATCH,
     KEY_NO_MATCH_HAVE_NEXT_PTR,
     GOT_TAIL
   } ht_data_table_state_t;
-  
+
   typedef enum int unsigned {
     NO_CHAIN,
 
@@ -59,14 +55,14 @@ package hash_table;
     logic [VALUE_WIDTH-1:0]    value;
     logic [HEAD_PTR_WIDTH-1:0] next_ptr;
     logic                      next_ptr_val;
-  } ram_data_t; 
-  
+  } ram_data_t;
+
   typedef struct packed {
     logic        [KEY_WIDTH-1:0]    key;
     logic        [VALUE_WIDTH-1:0]  value;
     ht_opcode_t                     opcode;
   } ht_command_t;
-  
+
   // pdata - data to pipeline/proccessing
   typedef struct packed {
     ht_command_t                cmd;
@@ -80,12 +76,12 @@ package hash_table;
   typedef struct packed {
     ht_command_t                cmd;
     ht_rescode_t                rescode;
-    
+
     logic  [BUCKET_WIDTH-1:0]   bucket;
 
     // valid only for opcode = OP_SEARCH
     logic [VALUE_WIDTH-1:0]     found_value;
-    
+
     // only for verification
     ht_chain_state_t            chain_state;
 
@@ -96,3 +92,4 @@ package hash_table;
   } ht_result_t;
 
 endpackage
+

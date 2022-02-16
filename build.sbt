@@ -7,11 +7,14 @@ val spinalCore = "com.github.spinalhdl" %% "spinalhdl-core" % spinalVersion
 val spinalLib = "com.github.spinalhdl" %% "spinalhdl-lib" % spinalVersion
 val spinalIdslPlugin = compilerPlugin("com.github.spinalhdl" %% "spinalhdl-idsl-plugin" % spinalVersion)
 
+val osLib = "com.lihaoyi" %% "os-lib" % "0.8.0"
+
 lazy val mylib = (project in file("."))
   .settings(
     name := "espinallib",
     libraryDependencies ++= Seq(spinalCore, spinalLib, spinalIdslPlugin),
-    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % Test
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % Test,
+    libraryDependencies ++= Seq(osLib)
   )
 
 fork := true
