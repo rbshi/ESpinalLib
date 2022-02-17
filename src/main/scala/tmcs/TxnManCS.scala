@@ -10,10 +10,10 @@ import util._
 
 import scala.language.postfixOps
 
-/*
+/**
 * Number of node, channel, lock of each channel; txnMan on each node
 * */
-case class SysConfig(nNode: Int, nCh: Int, nLock:Int, nTxnMan: Int){
+case class SysConfig(nNode: Int, nCh: Int, nLock: Int, nLtPart: Int, nTxnMan: Int){
   val wNId = log2Up(nNode)
   val wCId = log2Up(nCh)
   val wTId = log2Up(nLock)
@@ -33,8 +33,7 @@ case class SysConfig(nNode: Int, nCh: Int, nLock:Int, nTxnMan: Int){
   val wOwnerCnt = 4
   val wHtValNW = 1 + wOwnerCnt
   val wHtBucket = 6
-  val wHtTable = 9
-  val nLtPart = 1
+  val wHtTable = log2Up(nLock)
 
   val wChSize = 28 // 256MB of each channel (used as offset for global addressing)
 }
@@ -63,9 +62,11 @@ case class TxnEntry(conf: SysConfig) extends Bundle {
 }
 
 case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle with SetDefaultIO {
+
   // local/rmt req interface
   val lkReqLoc, lkReqRmt = master Stream LkReq(conf)
   val lkRespLoc, lkRespRmt = slave Stream LkResp(conf)
+
   // rd/wr data from/to remote
   val rdRmt = slave Stream UInt(512 bits)
   val wrRmt = master Stream UInt(512 bits)
@@ -76,13 +77,19 @@ case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle with 
   // cmd axi
   val cmdAxi = master(Axi4(axiConf))
 
+  // control signals (wire the input to the top AXIL registers)
+  val start = in Bool() //NOTE: hold for 1 cycle
+
   // txnMan config
   val nId = in UInt(conf.wNId bits)
   val txnManId = in UInt(conf.wTxnManId bits)
+  val txnNumTotal = in UInt(32 bits)
+  val cmdAddrOffs = in UInt(32 bits) //NOTE: unit size 64B
 
-  // FIXME: control
-  val start = in Bool()
 
+  val done = out(Reg(Bool())).init(False)
+  val cntTxnCmt, cntTxnAbt, cntTxnLd = out(Reg(UInt(32 bits))).init(0)
+  val cntClk = out(Reg(UInt(40 bits))).init(0)
 
   def setDefault() = {
 
@@ -118,9 +125,8 @@ case class TxnManCSIO(conf: SysConfig, axiConf: Axi4Config) extends Bundle with 
   }
 }
 
-/*
-* FIXME: now the txns are initialized in the mem
-* FIXME: each channel may contain multiple tables, the tId to address translation logic will be fixed
+/**
+* FIXME: each channel may contain multiple tables, the tId to address translation logic will be dedicated
 * Txn entry: node_id, channel_id, lock_id, lock_type, data length (2^n B), (data is omitted here, included in the txn logic)
 * */
 
@@ -139,25 +145,25 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
   val txnMem = Mem(TxnEntry(conf), conf.dTxnMem)
 
-  // store wr items to commit
+  // store wr tnxs to commit
   val txnWrMemLoc = Mem(TxnEntry(conf), conf.dTxnMem)
   val txnWrMemRmt = Mem(TxnEntry(conf), conf.dTxnMem)
   // store the obtained lock items to release
   val lkMemLoc = Mem(LkResp(conf), conf.dTxnMem)
   val lkMemRmt = Mem(LkResp(conf), conf.dTxnMem)
 
-  // reg array
-  // NOTE: separate local / remote
+  // context registers
+  // NOTE: separate local / remote; some reg is redundant (may be simplified)
   val cntLkReqLoc, cntLkReqRmt, cntLkRespLoc, cntLkRespRmt, cntLkHoldLoc, cntLkHoldRmt, cntLkReqWrLoc, cntLkReqWrRmt, cntLkHoldWrLoc, cntLkHoldWrRmt, cntCmtReqLoc, cntCmtReqRmt, cntCmtRespLoc, cntCmtRespRmt, cntRlseReqLoc, cntRlseReqRmt, cntRlseReqWrLoc, cntRlseReqWrRmt, cntRlseRespLoc, cntRlseRespRmt = Vec(Reg(UInt(conf.wMaxTxnLen bits)), conf.nTxnCS)
   // status register
   val rAbort = Vec(RegInit(False), conf.nTxnCS)
   val rReqDone, rRlseDone = Vec(RegInit(True), conf.nTxnCS) // init to True, to trigger the first txnMem load and issue
 
-  /*
+  /**
    * component1: lock request
    */
   val compLkReq = new StateMachine {
-    val RD_HEADER = new State with EntryPoint
+    val CS_TXN = new State with EntryPoint
     val RD_TXN = new State
 
     val curTxnId = Reg(UInt(conf.wTxnId bits)).init(0)
@@ -174,21 +180,21 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
     for (e <- List(lkReqGetLoc, lkReqGetRmt))
       e.payload := txnMemRd.toLkReq(io.txnManId, curTxnId, False, reqLen)
 
-    RD_HEADER.whenIsActive {
-      // read the txn header
-      txnMemRdCmd.valid := True
-      txnMemRdCmd.payload := txnOffs
-      txnMemRd.ready := True
+    CS_TXN.whenIsActive {
+      // txn is invalid (all lk reqs have been sent OR txn abort)
+      when(rReqDone(curTxnId) || rAbort(curTxnId)) {
+        curTxnId := curTxnId + 1
+      } otherwise {
+        // read the txn hd cmd, will be ready in the next cycle
+        txnMemRdCmd.valid := True
+        txnMemRdCmd.payload := txnOffs
+        txnMemRd.ready := True
+      }
 
       when(txnMemRd.fire){
-        // txn is invalid (all reqs have been sent / abort)
-        when(rReqDone(curTxnId) || rAbort(curTxnId)){
-          curTxnId := curTxnId + 1
-        } otherwise {
-          txnLen := txnMemRd.asBits(conf.wMaxTxnLen-1 downto 0).asUInt
-          txnMemRdCmd.valid := False
-          goto(RD_TXN)
-        }
+        txnMemRdCmd.valid := False
+        txnLen := txnMemRd.payload.asBits(conf.wMaxTxnLen-1 downto 0).asUInt
+        goto(RD_TXN)
       }
     }
 
@@ -197,13 +203,13 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     RD_TXN.whenIsActive {
 
+      val txnCntAddr = txnOffs + reqLen + 1
       txnMemRdCmd.valid := True
+      txnMemRdCmd.payload := lkReqFire ? (txnCntAddr + 1) | txnCntAddr  // backpressure
       txnMemRd.ready := lkReqFire
 
       when(lkReqFire){
-        txnMemRdCmd.payload := txnOffs + reqLen + 2
         reqLen := reqLen + 1
-
         switch(isLocal) {
           is(True)(cntLkReqLoc(curTxnId) := cntLkReqLoc(curTxnId) + 1)
           is(False) (cntLkReqRmt(curTxnId) := cntLkReqRmt(curTxnId) + 1)
@@ -220,30 +226,28 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
             }
           }
         }
-      } otherwise{
-        txnMemRdCmd.payload := txnOffs + reqLen + 1 // skip the txnHD
       }
 
-      // get the data and issue lkReq
+      // issue lkReq to local / rmt
       switch(isLocal) {
         is(True)(lkReqGetLoc.valid := txnMemRd.valid)
         is(False)(lkReqGetRmt.valid := txnMemRd.valid)
       }
 
-      // lkReq of next Txn
-      when(lkReqFire && (reqLen===(txnLen-1))){
+      //NOTE: lkReq of next Txn OR if abort, stop issue the req
+      when((lkReqFire && (reqLen===(txnLen-1))) || rAbort(curTxnId)){
         txnMemRdCmd.valid := False
-        // write lsb of txnHd
         rReqDone(curTxnId).set()
+        reqLen.clearAll()
         curTxnId := curTxnId + 1
-
-        goto(RD_HEADER)
+        goto(CS_TXN)
       }
+
     }
   }
 
 
-  /*
+  /**
   * component2: lock response
   *
   * */
@@ -258,7 +262,19 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     val rCurTxnId = RegNextWhen(curTxnId, io.lkRespLoc.fire)
     val getAllRlse = (cntRlseRespLoc(rCurTxnId) === cntLkHoldLoc(rCurTxnId)) && (cntRlseRespRmt(rCurTxnId) === cntLkHoldRmt(rCurTxnId))
-    when(getAllRlse)(rRlseDone(rCurTxnId).set())
+    val getAllLkResp = (cntLkReqLoc(rCurTxnId) === cntLkRespLoc(rCurTxnId)) && (cntLkReqRmt(rCurTxnId) === cntLkRespRmt(rCurTxnId))
+
+    // Since rReqDone will have two cycles latency (io.lkResp (c0) -> R -> rAbort (c1) -> R -> rReqDone (c2)), the following logic occurs in c1, so use ~(xxx) as extra statements to avoid lkReq happens in c2.
+    val firstReqAbt = rAbort(rCurTxnId) && ~(io.lkReqLoc.fire && io.lkReqLoc.txnId===rCurTxnId) && ~(io.lkReqRmt.fire && io.lkReqRmt.txnId===rCurTxnId)
+
+    val rFire = RegNext(io.lkRespLoc.fire)
+
+    // FIXME: may conflict with LkRespRmt
+    // release after get all lkResp and rReqDone
+    when(rFire && getAllRlse && getAllLkResp && (rReqDone(rCurTxnId) || firstReqAbt)){
+      rRlseDone(rCurTxnId).set()
+      when(rAbort(rCurTxnId)) (io.cntTxnAbt := io.cntTxnAbt +1) otherwise(io.cntTxnCmt := io.cntTxnCmt +1)
+    }
 
     WAIT_RESP.whenIsActive {
       io.lkRespLoc.ready := True
@@ -297,7 +313,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     // TODO: data path
     // FIXME: tId -> addr translation logic
-    io.axi.ar.addr := ((rLkResp.tId << rLkResp.wLen) + (rLkResp.cId << conf.wChSize)).resized
+    io.axi.ar.addr := (((rLkResp.tId << rLkResp.wLen) << 6) + (rLkResp.cId << conf.wChSize)).resized
     io.axi.ar.id := rLkResp.txnId
     io.axi.ar.len := (U(1)<<rLkResp.wLen) -1
     io.axi.ar.size := log2Up(512/8)
@@ -322,7 +338,18 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     val rCurTxnId = RegNextWhen(curTxnId, io.lkRespRmt.fire)
     val getAllRlse = (cntRlseRespLoc(rCurTxnId) === cntLkHoldLoc(rCurTxnId)) && (cntRlseRespRmt(rCurTxnId) === cntLkHoldRmt(rCurTxnId))
-    when(getAllRlse)(rRlseDone(rCurTxnId).set())
+    val getAllLkResp = (cntLkReqLoc(rCurTxnId) === cntLkRespLoc(rCurTxnId)) && (cntLkReqRmt(rCurTxnId) === cntLkRespRmt(rCurTxnId))
+
+    // io.lkResp -> R -> rAbort -> R -> rReqDone
+    val firstReqAbt = rAbort(rCurTxnId) && ~(io.lkReqLoc.fire && io.lkReqLoc.txnId===rCurTxnId) && ~(io.lkReqRmt.fire && io.lkReqRmt.txnId===rCurTxnId)
+
+    val rFire = RegNext(io.lkRespRmt.fire)
+
+    // release after get all lkResp and rReqDone
+    when(rFire && getAllRlse && getAllLkResp && (rReqDone(rCurTxnId) || firstReqAbt)){
+      rRlseDone(rCurTxnId).set()
+      when(rAbort(rCurTxnId)) (io.cntTxnAbt := io.cntTxnAbt +1) otherwise(io.cntTxnCmt := io.cntTxnCmt +1)
+    }
 
 
     WAIT_RESP.whenIsActive {
@@ -371,7 +398,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
   }
 
 
-  /*
+  /**
   * component3: axi response
   * */
 
@@ -386,7 +413,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
   }
 
 
-  /*
+  /**
   * component4: txnCommit
   * */
 
@@ -398,7 +425,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
     val curTxnId = Reg(UInt(conf.wTxnId bits)).init(0)
     val txnOffs = curTxnId << conf.wMaxTxnLen
 
-    val cmtTxn = txnWrMemLoc.readSync(txnOffs+cntCmtReqLoc(curTxnId))
+    val cmtTxn = txnWrMemLoc.readSync(txnOffs+cntCmtReqLoc(curTxnId)) //
     val rCmtTxn = RegNext(cmtTxn)
 
     val nBeat = Reg(UInt(8 bits)).init(0)
@@ -406,11 +433,11 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
     val getAllLkResp = (cntLkReqLoc(curTxnId) === cntLkRespLoc(curTxnId)) && (cntLkReqRmt(curTxnId) === cntLkRespRmt(curTxnId))
 
     CS_TXN.whenIsActive {
-      /*
+      /**
       * 1. get All lk resp
       * 2. sent out all lk req
       * 3. no abort
-      * 4. send #cmtReq === #LkHoldWr local
+      * 4. send #cmtReq < #LkHoldWr local
       * */
       val cmtCret = getAllLkResp && rReqDone(curTxnId) && ~rAbort(curTxnId) && (cntCmtReqLoc(curTxnId) < cntLkHoldWrLoc(curTxnId))
       when(cmtCret) {
@@ -422,9 +449,9 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     // TODO: data path
     // fixme: tId -> addr translation logic
-    io.axi.aw.addr := ((rCmtTxn.tId << rCmtTxn.wLen) + (rCmtTxn.cId << conf.wChSize)).resized
+    io.axi.aw.addr := ((cmtTxn.tId << cmtTxn.wLen) + (cmtTxn.cId << conf.wChSize)).resized
     io.axi.aw.id := curTxnId
-    io.axi.aw.len := (U(1)<<rCmtTxn.wLen) -1
+    io.axi.aw.len := (U(1)<<cmtTxn.wLen) -1
     io.axi.aw.size := log2Up(512/8)
     io.axi.aw.setBurstINCR()
 
@@ -434,6 +461,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
         goto(LOCAL_W)
       }
     }
+
 
     io.axi.w.data.setAll()
     io.axi.w.last := (nBeat === (U(1)<<rCmtTxn.wLen) -1)
@@ -453,7 +481,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
   }
 
 
-  /*
+  /**
   * component5: lkRelease
   *
   * */
@@ -470,7 +498,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     CS_TXN.whenIsActive {
 
-      /*
+      /**
       * 1. get all lk resp
       * 2. rAbort || rReqDone
       * 3. (rAbort || WrLoc <= CmtRespLoc )
@@ -513,7 +541,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     CS_TXN.whenIsActive {
 
-      /*
+      /**
       * 1. get all lk resp
       * 2. rAbort || rReqDone
       * 3. send #RlseReq loc === #LkHold local
@@ -557,7 +585,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
   }
 
-  /*
+  /**
   * component6: loadTxnMem
   *
   * */
@@ -567,10 +595,10 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
     val CS_TXN, RD_CMDAXI, LD_TXN = new State
 
     val curTxnId = Reg(UInt(conf.wTxnId bits)).init(0)
-    val cntTxn = Reg(UInt(10 bits)).init(0)
+    val cntTxn = Reg(UInt(32 bits)).init(0)
     val txnOffs = curTxnId << conf.wMaxTxnLen
 
-    io.cmdAxi.ar.addr := ((cntTxn << conf.wMaxTxnLen) << log2Up(512/8)).resized
+    io.cmdAxi.ar.addr := (((cntTxn << conf.wMaxTxnLen) << log2Up(8)) + (io.cmdAddrOffs<<6)).resized // each txn takes 8 Bytes
     io.cmdAxi.ar.id := 0
     // each 512 b contains 8 txn word (64 b / word)
     io.cmdAxi.ar.len := ((U(1)<<(conf.wMaxTxnLen-3)) -1).resized
@@ -589,11 +617,17 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
     // IDLE: wait start signal
     IDLE.whenIsActive {
-      when(io.start) (goto(CS_TXN))
+      when(io.start) {
+        // reset regs
+        curTxnId.clearAll()
+        cntTxn.clearAll()
+        goto(CS_TXN)
+      }
     }
 
     //
     CS_TXN.whenIsActive {
+      //NOTE: use rlseDone as flag of empty txn slot
       when(rRlseDone(curTxnId)) {
         goto(RD_CMDAXI)
       } otherwise {
@@ -608,7 +642,6 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
         rTxnMemLd.clear()
         cntTxnWordInLine.clear()
         cntTxnWord.clear()
-
         goto(LD_TXN)
       }
     }
@@ -633,21 +666,41 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
         for (e <- List(rReqDone, rAbort, rRlseDone))
           e(curTxnId).clear()
 
-        //TODO: increase the result cnt
-
+        io.cntTxnLd := io.cntTxnLd + 1
         cntTxn := cntTxn + 1
-        goto(CS_TXN)
+
+        when(cntTxn === (io.txnNumTotal-1))(goto(IDLE)) otherwise(goto(CS_TXN))
       }  // load one txn finished
     }
-
   }
+
+  // io.done: all txn rlseDone; all txn loaded; set done only once
+  when(rRlseDone.andR && io.cntTxnLd===io.txnNumTotal && ~io.done)(io.done.set())
+
+  // io.cntClk
+  val clkCnt = new StateMachine {
+    val IDLE = new State with EntryPoint
+    val CNT = new State
+    IDLE.whenIsActive{
+      when(io.start){
+        io.cntClk.clearAll()
+        goto(CNT)
+      }
+    }
+
+    CNT.whenIsActive {
+      io.cntClk := io.cntClk + 1
+      when(io.done)(goto(IDLE))
+    }
+  }
+
 
 }
 
 object TxnManCSMain {
   def main(args: Array[String]): Unit = {
 
-    val sysConf = SysConfig(1, 1, 1024, 1)
+    val sysConf = SysConfig(1, 1, 1024, 1, 1)
 
     val axiConf = Axi4Config(
       addressWidth = 64,

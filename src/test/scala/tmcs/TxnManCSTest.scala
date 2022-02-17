@@ -15,8 +15,9 @@ import spinal.lib.{master, slave}
 import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
-
 import util._
+
+import scala.language.postfixOps
 
 /*
 * connect the txnManCS to a lt
@@ -30,9 +31,14 @@ class TxnManCSTop(sysConf: SysConfig, axiConf: Axi4Config) extends Component wit
     val axi = master(Axi4(axiConf))
     val cmdAxi = master(Axi4(axiConf))
     val start = in Bool()
+    val txnNumTotal = in UInt(32 bits)
+    val cmdAddrOffs = in UInt(32 bits) //NOTE: unit size 64B
   }
 
   io.start <> txnMan.io.start
+  io.txnNumTotal <> txnMan.io.txnNumTotal
+  io.cmdAddrOffs <> txnMan.io.cmdAddrOffs
+
   io.axi <> txnMan.io.axi
   io.cmdAxi <> txnMan.io.cmdAxi
   txnMan.io.lkReqLoc <> lt.io.lkReq
@@ -51,7 +57,7 @@ class TxnManCSTop(sysConf: SysConfig, axiConf: Axi4Config) extends Component wit
 class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
   // TODO: update ht sv
-  val sysConf = SysConfig(1, 1, 1024, 1)
+  val sysConf = SysConfig(1, 1, 1024, 1, 1)
   val axiConf = Axi4Config(
     addressWidth = 64,
     dataWidth    = 512,
@@ -78,7 +84,10 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
       // txnHd
       txnMem += txnLen
       for (j <- 0 until txnLen)
-        txnMem += txnEntry2BigInt(0, 0, txnLen*i+j, 0, 1) // len=64B << 1
+        txnMem += txnEntry2BigInt(0, 0, j+i, 1, 0) // len=64B << 0
+        // txnMem += txnEntry2BigInt(0, 0, txnLen*(i%sysConf.nTxnCS)/2+j, 1, 0) // conflict between neighboring txn
+        // txnMem += txnEntry2BigInt(0, 0, txnLen*(i%sysConf.nTxnCS)+j, 1, 0)
+        // txnMem += txnEntry2BigInt(0, 0, txnLen*i+j, 0, 0) // len=64B << 0
       for (j <- 0 until (txnMaxLen-txnLen))
         txnMem += 0
     }
@@ -91,7 +100,7 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
     // params
     val txnLen = 16
-    val txnCnt = 64
+    val txnCnt = 128
     val txnMaxLen = sysConf.maxTxnLen-1
 
     dut.clockDomain.forkStimulus(period = 10)
@@ -104,7 +113,7 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
       writeResponseDelay = 2
     ))
     axi_mem.start()
-    val mem_init = Array.fill[Byte](8192)(0.toByte)
+    val mem_init = Array.fill[Byte](1<<20)(0.toByte)
     axi_mem.memory.writeArray(0, mem_init)
 
     // cmd memory
@@ -126,14 +135,27 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
     // init to cmd memory
     cmd_axi_mem.memory.writeArray(0, cmd_axi_mem_init)
 
+    dut.io.start #= false
     // wait the fifo (empty_ptr) to reset
     dut.clockDomain.waitSampling(2000)
 
+    // config
+    dut.io.cmdAddrOffs #= 0
+    dut.io.txnNumTotal #= txnCnt
+
     // start
     dut.io.start #= true
+    dut.clockDomain.waitSampling()
+    dut.io.start #= false
+
 
     // wait for a while
-    dut.clockDomain.waitSampling(2000)
+    dut.clockDomain.waitSampling(64000)
+
+//    dut.clockDomain.waitSamplingWhere(dut.txnMan.io.done.toBoolean)
+    println(s"[txnMan] cntTxnCmt: ${dut.txnMan.io.cntTxnCmt.toBigInt}")
+    println(s"[txnMan] cntTxnAbt: ${dut.txnMan.io.cntTxnAbt.toBigInt}")
+    println(s"[txnMan] cntTxnLd: ${dut.txnMan.io.cntTxnLd.toBigInt}")
 
   }
 

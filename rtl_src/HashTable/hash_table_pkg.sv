@@ -2,11 +2,11 @@
 // This is an auto-generated file.
 package hash_table;
 
-  parameter KEY_WIDTH        = 10;
+  parameter KEY_WIDTH        = 11;
   parameter VALUE_WIDTH      = 5;
   parameter BUCKET_WIDTH     = 6;
   parameter HASH_TYPE        = "dummy";
-  parameter TABLE_ADDR_WIDTH = 9;
+  parameter TABLE_ADDR_WIDTH = 11;
   parameter HEAD_PTR_WIDTH   = TABLE_ADDR_WIDTH;
 
   typedef enum logic [1:0] {

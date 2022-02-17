@@ -229,8 +229,10 @@ class LockTable(conf: SysConfig) extends Component {
         io.lkResp.lkType := req.lkType
         io.lkResp.lkUpgrade := req.lkUpgrade
         io.lkResp.lkRelease := req.lkRelease
-        io.lkResp.respType := r_lock_resp
         io.lkResp.lkIdx := req.lkIdx
+        io.lkResp.wLen := req.wLen
+        io.lkResp.respType := r_lock_resp
+
         when(io.lkResp.fire){goto(INSERT_TRY)}
       }
   }
