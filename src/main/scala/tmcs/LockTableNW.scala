@@ -25,20 +25,20 @@ case class LockEntry(conf: SysConfig) extends Bundle{
 case class RamEntry(conf: SysConfig) extends Bundle{
 
   val net_ptr_val = Bool()
-  val next_ptr = UInt(conf.wHtTable bits)
+  val next_ptr = UInt(conf.wHtTable-log2Up(conf.nLtPart) bits)
   val owner_cnt = UInt(conf.wOwnerCnt bits)
   val lock_status = Bool() // sh, ex
-  val key = UInt(conf.wTId bits)
+  val key = UInt(conf.wTId-log2Up(conf.nLtPart) bits)
 
   def toUInt : UInt = {
     this.asBits.asUInt
   }
 }
 
-case class LkReq(conf: SysConfig) extends Bundle{
+case class LkReq(conf: SysConfig, tIdTruncate: Int = 0) extends Bundle{
   val nId = UInt(conf.wNId bits)
   val cId = UInt(conf.wCId bits)
-  val tId = UInt(conf.wTId bits)
+  val tId = UInt(conf.wTId - tIdTruncate bits)
   val txnManId = UInt(conf.wTxnManId bits)
   val txnId = UInt(conf.wTxnId bits)
   val lkType = Bool()
@@ -63,10 +63,10 @@ case class LkReq(conf: SysConfig) extends Bundle{
 }
 
 // TODO: now LkResp bypass all info in LkReq
-case class LkResp(conf: SysConfig) extends Bundle{
+case class LkResp(conf: SysConfig, tIdTruncate: Int = 0) extends Bundle{
   val nId = UInt(conf.wNId bits)
   val cId = UInt(conf.wCId bits)
-  val tId = UInt(conf.wTId bits)
+  val tId = UInt(conf.wTId - tIdTruncate bits)
   val txnManId = UInt(conf.wTxnManId bits)
   val txnId = UInt(conf.wTxnId bits)
   val lkType = Bool()
@@ -108,9 +108,9 @@ case class LkResp(conf: SysConfig) extends Bundle{
 
 }
 
-class LockTableIO(conf: SysConfig) extends Bundle{
-  val lkReq = slave Stream(LkReq(conf))
-  val lkResp = master Stream(LkResp(conf))
+class LockTableIO(conf: SysConfig, tIdTruncate:Int = 0) extends Bundle{
+  val lkReq = slave Stream(LkReq(conf, tIdTruncate))
+  val lkResp = master Stream(LkResp(conf, tIdTruncate))
 
   def setDefault() = {
     this.lkReq.ready := False
@@ -121,10 +121,9 @@ class LockTableIO(conf: SysConfig) extends Bundle{
 
 
 class LockTable(conf: SysConfig) extends Component {
-
-  val io = new LockTableIO(conf)
+  val io = new LockTableIO(conf, log2Up(conf.nLtPart))
   // hash table
-  val ht = new HashTableDUT(conf.wTId-log2Up(conf.nLtPart), conf.wHtValNW, conf.wHtBucket, conf.wHtTable)
+  val ht = new HashTableDUT(conf.wTId-log2Up(conf.nLtPart), conf.wHtValNW, conf.wHtBucket, conf.wHtTable-log2Up(conf.nLtPart))
 
   io.setDefault()
   ht.io.setDefault()

@@ -25,7 +25,7 @@ import scala.language.postfixOps
 class TxnManCSTop(sysConf: SysConfig, axiConf: Axi4Config) extends Component with SetDefaultIO {
 
   val txnMan = new TxnManCS(sysConf, axiConf)
-  val lt = new LockTable(sysConf)
+  val ltCh = new LtCh(sysConf)
 
   val io = new Bundle {
     val axi = master(Axi4(axiConf))
@@ -41,8 +41,8 @@ class TxnManCSTop(sysConf: SysConfig, axiConf: Axi4Config) extends Component wit
 
   io.axi <> txnMan.io.axi
   io.cmdAxi <> txnMan.io.cmdAxi
-  txnMan.io.lkReqLoc <> lt.io.lkReq
-  txnMan.io.lkRespLoc <> lt.io.lkResp
+  txnMan.io.lkReqLoc <> ltCh.io.lkReq
+  txnMan.io.lkRespLoc <> ltCh.io.lkResp
   txnMan.io.nId := 0
   txnMan.io.txnManId := 0
 
@@ -56,8 +56,7 @@ class TxnManCSTop(sysConf: SysConfig, axiConf: Axi4Config) extends Component wit
 
 class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
-  // TODO: update ht sv
-  val sysConf = SysConfig(1, 1, 1024, 1, 1)
+  val sysConf = SysConfig(1, 1, 1024, 4, 1)
   val axiConf = Axi4Config(
     addressWidth = 64,
     dataWidth    = 512,
@@ -72,7 +71,6 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
     useQos       = false,
     useLen       = true
   )
-
 
   def txnEntry2BigInt(nId: Int, cId: Int, tId: Int, lkType: Int, wLen: Int): BigInt = {
     nId + (cId << (sysConf.wNId)) + (tId << (sysConf.wNId+sysConf.wCId)) + (lkType << (sysConf.wNId+sysConf.wCId+sysConf.wTId)) + (wLen << (sysConf.wNId+sysConf.wCId+sysConf.wTId+2))
@@ -109,7 +107,7 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
     val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
       maxOutstandingReads = 128,
       maxOutstandingWrites = 128,
-      readResponseDelay = 10,
+      readResponseDelay = 3,
       writeResponseDelay = 2
     ))
     axi_mem.start()
@@ -150,12 +148,13 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
 
     // wait for a while
-    dut.clockDomain.waitSampling(64000)
+//    dut.clockDomain.waitSampling(64000)
 
-//    dut.clockDomain.waitSamplingWhere(dut.txnMan.io.done.toBoolean)
+    dut.clockDomain.waitSamplingWhere(dut.txnMan.io.done.toBoolean)
     println(s"[txnMan] cntTxnCmt: ${dut.txnMan.io.cntTxnCmt.toBigInt}")
     println(s"[txnMan] cntTxnAbt: ${dut.txnMan.io.cntTxnAbt.toBigInt}")
     println(s"[txnMan] cntTxnLd: ${dut.txnMan.io.cntTxnLd.toBigInt}")
+    println(s"[txnMan] cntClk: ${dut.txnMan.io.cntClk.toBigInt}")
 
   }
 

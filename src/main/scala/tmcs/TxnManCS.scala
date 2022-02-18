@@ -283,8 +283,10 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
         when(io.lkRespLoc.respType === LockRespType.grant) {
           // note: ooo arrive
-          lkMemLoc.write(txnOffs+cntLkRespLoc(curTxnId), io.lkRespLoc)
+          // should use lkHold as wr address
+          lkMemLoc.write(txnOffs+cntLkHoldLoc(curTxnId), io.lkRespLoc.payload)
 
+          // NOTE:
           cntLkRespLoc(curTxnId) := cntLkRespLoc(curTxnId) + 1
           cntLkHoldLoc(curTxnId) := cntLkHoldLoc(curTxnId) + 1
 
@@ -359,7 +361,7 @@ class TxnManCS(conf: SysConfig, axiConf: Axi4Config) extends Component with Rena
 
         when(io.lkRespRmt.respType === LockRespType.grant) {
           // note: ooo arrive
-          lkMemRmt.write(txnOffs+cntLkRespRmt(curTxnId), io.lkRespRmt)
+          lkMemRmt.write(txnOffs+cntLkHoldRmt(curTxnId), io.lkRespRmt.payload)
 
           cntLkRespRmt(curTxnId) := cntLkRespRmt(curTxnId) + 1
           cntLkHoldRmt(curTxnId) := cntLkHoldRmt(curTxnId) + 1
