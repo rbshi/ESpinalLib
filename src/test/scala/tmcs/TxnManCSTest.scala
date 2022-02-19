@@ -42,7 +42,7 @@ class TxnManCSTop(sysConf: SysConfig) extends Component with SetDefaultIO {
   io.cmdAxi <> txnMan.io.cmdAxi
   txnMan.io.lkReqLoc <> ltCh.io.lkReq
   txnMan.io.lkRespLoc <> ltCh.io.lkResp
-  txnMan.io.nId := 0
+  txnMan.io.nodeId := 0
   txnMan.io.txnManId := 0
 
   for (e <- List(txnMan.io.lkReqRmt, txnMan.io.wrRmt))

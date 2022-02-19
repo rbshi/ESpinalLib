@@ -34,29 +34,47 @@ class LtCh(sysConf: SysConfig) extends Component{
 
 class LtTop(sysConf: SysConfig) extends Component {
   // ltIO number: nTxnMan + (nNode -1)
-  val io = Vec(LockTableIO(sysConf), sysConf.nTxnMan + sysConf.nNode -1)
+  val io = new Bundle {
+    val nodeId = in UInt(sysConf.wNId bits)
+    val lt = Vec(LockTableIO(sysConf), sysConf.nTxnMan + sysConf.nNode -1)
+  }
+
   // ltCh number: nCh
   val ltChAry = Array.fill(sysConf.nCh)(new LtCh(sysConf))
   // crossbar (lkReq/Resp bi-direction)
-  StreamCrossbarFactory.on(io.map(_.lkReq), ltChAry.map(_.io.lkReq), "cId")((o, i) => o.assignAllByName(i))
-  StreamCrossbarFactory.on(ltChAry.map(_.io.lkResp), io.map(_.lkResp), "cId")((o, i) => o.assignAllByName(i))
+  StreamCrossbarFactory.on(io.lt.map(_.lkReq), ltChAry.map(_.io.lkReq),  io.lt.map(_.lkReq.cId))((o, i) => o.assignAllByName(i))
+  StreamCrossbarFactory.on(ltChAry.map(_.io.lkResp), io.lt.map(_.lkResp), ltChAry.map(_.io.lkResp).map(fLkRespDemux(_)))((o, i) => o.assignAllByName(i))
 
-
+  // demux the lkResp to nCh txnMan and (nNode - 1) txnAgent
+  def fLkRespDemux(lkResp: LkResp): UInt = {
+    val demuxSel = UInt(log2Up(sysConf.nCh + sysConf.nNode - 1) bits)
+    when(io.nodeId < lkResp.nId) {
+      demuxSel := sysConf.nCh + lkResp.nId - 1
+    } otherwise {
+      when(io.nodeId > lkResp.nId) {
+        demuxSel := sysConf.nCh + lkResp.nId
+      } otherwise {
+        demuxSel := lkResp.cId
+      }
+    }
+    demuxSel
+  }
 
 }
 
-// with similar code style as StreamArbiter
-class StreamCrossbar[T1 <: Data, T2 <: Data](nIn: Int, nOut: Int, demuxSel: String, dInT: HardType[T1], dOutT: HardType[T2])(f: (T2, T1) => Unit) extends Component {
+// with similar coding style as StreamArbiter
+// bypass demuxSel for each StreamDemux
+class StreamCrossbar[T1 <: Data, T2 <: Data](nIn: Int, nOut: Int, dInT: HardType[T1], dOutT: HardType[T2])(f: (T2, T1) => Unit) extends Component {
   val io = new Bundle {
     val inV = Vec(slave Stream(dInT), nIn)
     val outV = Vec(master Stream(dOutT), nOut)
+    val inDemuxSel = in Vec(UInt(log2Up(nOut) bits))
   }
-  // Stream should be bundle type, and has elem named `demuxSel`
-  require(dInT.asInstanceOf[Bundle].find(demuxSel) != null, s"Require element named '$demuxSel' in input Bundle")
+
   // inV Demux
   val inDemuxAry = Array.fill(nIn)(new StreamDemux2(dInT, nOut))
   (io.inV, inDemuxAry).zipped.foreach(_ >> _.io.input)
-  (io.inV, inDemuxAry).zipped.foreach(_.payload.asInstanceOf[Bundle].find(demuxSel).asBits.asUInt >> _.io.select)
+  (io.inDemuxSel, inDemuxAry).zipped.foreach(_ >> _.io.select)
 
   // out Arbiter
   val outArbAry = Array.fill(nOut)(StreamArbiterFactory.roundRobin.build(dInT, nOut))
@@ -70,15 +88,15 @@ class StreamCrossbar[T1 <: Data, T2 <: Data](nIn: Int, nOut: Int, demuxSel: Stri
 object StreamCrossbarFactory {
 
   // instantiation
-  def build[T1 <: Data, T2 <: Data](nIn: Int, nOut: Int, demuxSel: String,  dInT: HardType[T1], dOutT: HardType[T2])(f: (T2, T1) => Unit): StreamCrossbar[T1, T2] = {
-    new StreamCrossbar(nIn, nOut, demuxSel, dInT, dOutT)(f)
+  def build[T1 <: Data, T2 <: Data](nIn: Int, nOut: Int, dInT: HardType[T1], dOutT: HardType[T2])(f: (T2, T1) => Unit): StreamCrossbar[T1, T2] = {
+    new StreamCrossbar(nIn, nOut, dInT, dOutT)(f)
   }
 
-
-  def on[T1 <: Data, T2 <: Data](inV: Seq[Stream[T1]], outV: Seq[Stream[T2]], demuxSel: String)(f: (T2, T1) => Unit) {
-    val crossbar = build(inV.size, outV.size, demuxSel, inV(0).payloadType, outV(0).payloadType)(f)
+  def on[T1 <: Data, T2 <: Data](inV: Seq[Stream[T1]], outV: Seq[Stream[T2]], inDemuxSel: Seq[UInt])(f: (T2, T1) => Unit) {
+    val crossbar = build(inV.size, outV.size, inV.head.payloadType, outV.head.payloadType)(f)
     (crossbar.io.inV, inV).zipped.foreach(_ << _)
     (crossbar.io.outV, outV).zipped.foreach(_ >> _)
+    (crossbar.io.inDemuxSel, inDemuxSel).zipped.foreach(_ <> _)
   }
 }
 

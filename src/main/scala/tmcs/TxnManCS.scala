@@ -28,7 +28,7 @@ case class TxnManCSIO(conf: SysConfig) extends Bundle {
   val start = in Bool() //NOTE: hold for 1 cycle
 
   // txnMan config
-  val nId = in UInt(conf.wNId bits)
+  val nodeId = in UInt(conf.wNId bits) // to avoid confusing with lkReq/Resp.nId
   val txnManId = in UInt(conf.wTxnManId bits)
   val txnNumTotal = in UInt(32 bits)
   val cmdAddrOffs = in UInt(32 bits) //NOTE: unit size 64B
@@ -142,7 +142,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
     }
 
     val lkReqFire = lkReqGetLoc.fire || lkReqGetRmt.fire
-    val isLocal = txnMemRd.nId === io.nId
+    val isLocal = txnMemRd.nId === io.nodeId
 
     RD_TXN.whenIsActive {
 
