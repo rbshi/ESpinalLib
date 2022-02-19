@@ -68,7 +68,7 @@ class HashTableIO(keyWidth:Int, valWidth:Int, bucketWidth:Int, tableAddrWidth:In
     this.ht_cmd_if.key := 0
     this.ht_cmd_if.value := 0
     this.ht_cmd_if.opcode := HashTableOpCode.sea
-    this.ht_res_if.ready := False
+    // this.ht_res_if.ready := False
     this.ht_clear_ram_run := False
     this.dt_clear_ram_run := False
     this.update_en := False

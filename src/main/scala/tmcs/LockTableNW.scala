@@ -17,6 +17,7 @@ object LockRespType extends SpinalEnum{
 case class LockEntry(conf: SysConfig) extends Bundle{
   val lock_status = Bool() // sh, ex
   val owner_cnt = UInt(conf.wOwnerCnt bits)
+
   def toUInt : UInt = {
     this.asBits.asUInt
   }
@@ -35,100 +36,24 @@ case class RamEntry(conf: SysConfig) extends Bundle{
   }
 }
 
-case class LkReq(conf: SysConfig, tIdTruncate: Int = 0) extends Bundle{
-  val nId = UInt(conf.wNId bits)
-  val cId = UInt(conf.wCId bits)
-  val tId = UInt(conf.wTId - tIdTruncate bits)
-  val txnManId = UInt(conf.wTxnManId bits)
-  val txnId = UInt(conf.wTxnId bits)
-  val lkType = Bool()
-  val lkUpgrade = Bool()
-  val lkRelease = Bool()
-  val lkIdx = UInt(conf.wLkIdx bits)
-  val wLen = UInt(3 bits) // len(tuple)=2^wLen
-  // val vld = Bool() // for network usage
-
-  def setDefault() = {
-    this.nId := 0
-    this.cId := 0
-    this.txnManId := 0
-    this.txnId := 0
-    this.tId := 0
-    this.lkType := False
-    this.lkUpgrade := False
-    this.lkIdx := 0
-    this.wLen := 0
-  }
-
-}
-
-// TODO: now LkResp bypass all info in LkReq
-case class LkResp(conf: SysConfig, tIdTruncate: Int = 0) extends Bundle{
-  val nId = UInt(conf.wNId bits)
-  val cId = UInt(conf.wCId bits)
-  val tId = UInt(conf.wTId - tIdTruncate bits)
-  val txnManId = UInt(conf.wTxnManId bits)
-  val txnId = UInt(conf.wTxnId bits)
-  val lkType = Bool()
-  val lkUpgrade = Bool()
-  val lkRelease = Bool()
-  val lkIdx = UInt(conf.wLkIdx bits)
-  val wLen = UInt(3 bits) // len(tuple)=2^wLen
-  val respType = LockRespType()
-
-
-  def setDefault() = {
-    this.nId := 0
-    this.cId := 0
-    this.txnManId := 0
-    this.txnId := 0
-    this.tId := 0
-    this.lkType := False
-    this.lkUpgrade := False
-    this.lkRelease := False
-    this.lkIdx := 0
-    this.wLen := 0
-    this.respType := LockRespType.abort
-  }
-
-  def toLkReq(release: Bool, lkIdx: UInt): LkReq = {
-    val ret = LkReq(conf)
-    ret.nId := this.nId
-    ret.cId := this.cId
-    ret.tId := this.tId
-    ret.txnManId := this.txnManId
-    ret.txnId:= this.txnId
-    ret.lkType := this.lkType
-    ret.lkUpgrade := this.lkUpgrade
-    ret.lkRelease := release
-    ret.lkIdx := lkIdx
-    ret.wLen := this.wLen
-    ret
-  }
-
-}
-
-class LockTableIO(conf: SysConfig, tIdTruncate:Int = 0) extends Bundle{
-  val lkReq = slave Stream(LkReq(conf, tIdTruncate))
-  val lkResp = master Stream(LkResp(conf, tIdTruncate))
-
-  def setDefault() = {
-    this.lkReq.ready := False
-    this.lkResp.valid := False
-    this.lkResp.setDefault()
-  }
+class LockTableIO(conf: SysConfig, isTIdTrunc: Boolean) extends Bundle{
+  val lkReq = slave Stream(LkReq(conf, isTIdTrunc))
+  val lkResp = master Stream(LkResp(conf, isTIdTrunc))
 }
 
 
 class LockTable(conf: SysConfig) extends Component {
-  val io = new LockTableIO(conf, log2Up(conf.nLtPart))
-  // hash table
+
+  val io = new LockTableIO(conf, true)
   val ht = new HashTableDUT(conf.wTId-log2Up(conf.nLtPart), conf.wHtValNW, conf.wHtBucket, conf.wHtTable-log2Up(conf.nLtPart))
 
-  io.setDefault()
   ht.io.setDefault()
 
   val fsm = new StateMachine {
+
+    val INSERT_TRY = new State with EntryPoint
+    val INSET_RESP, DEL_CMD, DEL_RESP, LK_RESP = new State
+
     // stage lock_req
     val req = RegNextWhen(io.lkReq.payload, io.lkReq.fire)
     // stage ht out
@@ -136,104 +61,82 @@ class LockTable(conf: SysConfig) extends Component {
     ht_lock_entry_cast.assignFromBits(ht.io.ht_res_if.found_value.asBits) // wire: cast the value of ht to lock_entry
 
     val ht_ram_entry_cast = RamEntry(conf)
-
     ht_ram_entry_cast.assignFromBits(ht.io.ht_res_if.ram_data.asBits) // BUG, MSB order
 
     val r_lock_resp = Reg(LockRespType())
 
-    val INSERT_TRY = new State with EntryPoint
-    val INSET_RESP, DEL_CMD, DEL_RESP, LK_RESP = new State
+    ht.io.ht_res_if.ready := True
+    io.lkReq.ready := False
 
-    INSERT_TRY
-      .whenIsActive{
-        val try_onwer_cnt = UInt(conf.wOwnerCnt bits)
-        try_onwer_cnt := 1
-        ht.io.ht_res_if.ready := True
-
-        io.lkReq.ready := ht.io.ht_cmd_if.ready
-
-        when(io.lkReq.valid){
-          ht.io.sendCmd(io.lkReq.tId, (io.lkReq.lkType ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
-        }
-
-        when(io.lkReq.fire){
-          goto(INSET_RESP)
-        }
+    INSERT_TRY.whenIsActive{
+      val try_onwer_cnt = UInt(conf.wOwnerCnt bits)
+      try_onwer_cnt := 1
+      io.lkReq.ready := ht.io.ht_cmd_if.ready
+      when(io.lkReq.valid){
+        ht.io.sendCmd(io.lkReq.tId, (io.lkReq.lkType ## try_onwer_cnt).asUInt, HashTableOpCode.ins2)
       }
 
-    INSET_RESP
-      .whenIsActive {
-        ht.io.ht_res_if.ready := True
-        ht.io.update_addr := ht.io.ht_res_if.find_addr
-        when(ht.io.ht_res_if.fire) {
-          when(!req.lkRelease) {
+      when(io.lkReq.fire){
+        goto(INSET_RESP)
+      }
+    }
 
-            ht.io.update_data := (ht_ram_entry_cast.key ## req.lkType ## (ht_ram_entry_cast.owner_cnt+1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
+    INSET_RESP.whenIsActive {
+      ht.io.update_addr := ht.io.ht_res_if.find_addr
+      when(ht.io.ht_res_if.fire) {
+        when(!req.lkRelease) {
 
-            when(ht.io.ht_res_if.rescode === HashTableRetCode.ins_exist) {
-              // lock exist
-              when((!req.lkUpgrade && (ht_lock_entry_cast.lock_status | req.lkType)) || (req.lkUpgrade && ht_lock_entry_cast.owner_cnt > 1)) {
-                r_lock_resp := LockRespType.abort // no wait
-                goto(LK_RESP)
-              } otherwise {
-                r_lock_resp := LockRespType.grant
-                // write back to ht data ram
-                ht.io.update_en := True
-                goto(LK_RESP)
-              }
-            } otherwise {
-              // insert_success
-              r_lock_resp := LockRespType.grant
+          ht.io.update_data := (ht_ram_entry_cast.key ## req.lkType ## (ht_ram_entry_cast.owner_cnt+1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
+
+          when(ht.io.ht_res_if.rescode === HashTableRetCode.ins_exist) {
+            // lock exist
+            when((!req.lkUpgrade && (ht_lock_entry_cast.lock_status | req.lkType)) || (req.lkUpgrade && ht_lock_entry_cast.owner_cnt > 1)) {
+              r_lock_resp := LockRespType.abort // no wait
               goto(LK_RESP)
-            }
-          } otherwise {
-
-            ht.io.update_data := (ht_ram_entry_cast.key ## req.lkType ## (ht_ram_entry_cast.owner_cnt-1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
-
-            // lock release, ht.io.ht_res_if.rescode must be ins_exist. 2 cases: cnt-- or del entry (cost a few cycles)
-            when(ht_ram_entry_cast.owner_cnt===1){
-              // ht must be ready, del the entry: BUG
-              goto(DEL_CMD)
             } otherwise {
+              r_lock_resp := LockRespType.grant
+              // write back to ht data ram
               ht.io.update_en := True
               goto(LK_RESP)
             }
-            r_lock_resp := LockRespType.release
+          } otherwise {
+            // insert_success
+            r_lock_resp := LockRespType.grant
+            goto(LK_RESP)
           }
+        } otherwise {
+
+          ht.io.update_data := (ht_ram_entry_cast.key ## req.lkType ## (ht_ram_entry_cast.owner_cnt-1) ## ht_ram_entry_cast.next_ptr ## ht_ram_entry_cast.net_ptr_val).asUInt
+
+          // lock release, ht.io.ht_res_if.rescode must be ins_exist. 2 cases: cnt-- or del entry (cost a few cycles)
+          when(ht_ram_entry_cast.owner_cnt===1){
+            // ht must be ready, del the entry: BUG
+            goto(DEL_CMD)
+          } otherwise {
+            ht.io.update_en := True
+            goto(LK_RESP)
+          }
+          r_lock_resp := LockRespType.release
         }
       }
+    }
 
+    DEL_CMD.whenIsActive{
+      ht.io.sendCmd(req.tId, 0, HashTableOpCode.del)
+      when(ht.io.ht_cmd_if.fire){goto(DEL_RESP)}
+    }
 
-    DEL_CMD
-      .whenIsActive{
-        ht.io.ht_res_if.ready := True
-        ht.io.sendCmd(req.tId, 0, HashTableOpCode.del)
-        when(ht.io.ht_cmd_if.fire){goto(DEL_RESP)}
-      }
+    DEL_RESP.whenIsActive{
+      when(ht.io.ht_res_if.fire){goto(LK_RESP)}
+    }
 
-    DEL_RESP
-      .whenIsActive{
-        ht.io.ht_res_if.ready := True
-        when(ht.io.ht_res_if.fire){goto(LK_RESP)}
-      }
+    io.lkResp.payload.assignSomeByName(req)
+    io.lkResp.respType := r_lock_resp
+    io.lkResp.valid := isActive(LK_RESP)
 
-
-    LK_RESP
-      .whenIsActive{
-        ht.io.ht_res_if.ready := True
-
-        io.lkResp.valid := True
-        io.lkResp.txnId := req.txnId
-        io.lkResp.tId := req.tId
-        io.lkResp.lkType := req.lkType
-        io.lkResp.lkUpgrade := req.lkUpgrade
-        io.lkResp.lkRelease := req.lkRelease
-        io.lkResp.lkIdx := req.lkIdx
-        io.lkResp.wLen := req.wLen
-        io.lkResp.respType := r_lock_resp
-
-        when(io.lkResp.fire){goto(INSERT_TRY)}
-      }
+    LK_RESP.whenIsActive{
+      when(io.lkResp.fire){goto(INSERT_TRY)}
+    }
   }
 
 }

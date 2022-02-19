@@ -11,7 +11,7 @@ import scala.language.postfixOps
 // local
 class SendArbiter(cntTxnMan: Int, sysConf: SysConfig) extends Component {
   val io = new Bundle {
-    val lkReqV = Vec(slave Stream LkReq(sysConf), cntTxnMan)
+    val lkReqV = Vec(slave Stream LkReq(sysConf, false), cntTxnMan)
     val wrDataV = Vec(slave Stream Bits(512 bits), cntTxnMan)
     val sendQ = master Stream Bits(512 bits)
   }
@@ -74,7 +74,7 @@ class RecvDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 
   val io = new Bundle {
     val recvQ = master Stream Bits(512 bits)
-    val lkRespV = Vec(master Stream LkResp(sysConf), cntTxnMan)
+    val lkRespV = Vec(master Stream LkResp(sysConf, false), cntTxnMan)
     val rdDataV = Vec(master Stream Bits(512 bits), cntTxnMan)
   }
 
@@ -87,7 +87,7 @@ class RecvDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
     val cntDisp = Counter(cntTxnMan)
 
     // cast to bit vectors
-    val rLkResp = Vec(Reg(LkResp(sysConf)), cntTxnMan)
+    val rLkResp = Vec(Reg(LkResp(sysConf, false)), cntTxnMan)
     val lkRespBitV = io.recvQ.payload(widthOf(rLkResp) - 1 downto 0).subdivideIn(SlicesCount(cntTxnMan))
 
     val rMskRd = Reg(Bits(cntTxnMan bits)).init(0)
@@ -153,7 +153,7 @@ class ReqDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 
   val io = new Bundle {
     val reqQ = master Stream Bits(512 bits)
-    val lkReq = master Stream LkReq(sysConf)
+    val lkReq = master Stream LkReq(sysConf, false)
     val wrData = master Stream Bits(512 bits)
   }
 
@@ -166,7 +166,7 @@ class ReqDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
     val cntFire = Counter(cntTxnMan)
 
     // cast to bit vectors
-    val rLkReq = Vec(Reg(LkReq(sysConf)), cntTxnMan)
+    val rLkReq = Vec(Reg(LkReq(sysConf, false)), cntTxnMan)
     val lkReqBitV = io.reqQ.payload(widthOf(rLkReq) - 1 downto 0).subdivideIn(SlicesCount(cntTxnMan))
 
     val rMskWr = Reg(Bits(cntTxnMan bits)).init(0)
@@ -231,7 +231,7 @@ class ReqDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 // TODO: RespArbiter & RecvDispatcher should pack the lock with 8, non-related to cntTxnMan. (Here just in case the #remote_lk is not multiple of 8)
 class RespArbiter(cntTxnMan: Int, sysConf: SysConfig) extends Component {
   val io = new Bundle {
-    val lkResp = slave Stream LkResp(sysConf)
+    val lkResp = slave Stream LkResp(sysConf, false)
     val rdData = slave Stream Bits(512 bits)
     val respQ = master Stream Bits(512 bits)
   }
