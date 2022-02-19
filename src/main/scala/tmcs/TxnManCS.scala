@@ -113,15 +113,25 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
     for (e <- Seq(lkReqGetLoc, lkReqGetRmt))
       e.payload := txnMemRd.toLkReq(io.txnManId, curTxnId, False, reqLen)
 
+    val mskTxn2Start = ~rReqDone.asBits & ~rAbort.asBits // msk to indicate which txn to start
+    val idxTxn2Start = OHToUInt(OHMasking.first(mskTxn2Start))
+
+
     CS_TXN.whenIsActive {
       // txn is invalid (all lk reqs have been sent OR txn abort)
-      when(rReqDone(curTxnId) || rAbort(curTxnId)) {
-        curTxnId := curTxnId + 1
-      } otherwise {
-        // read the txn hd cmd, will be ready in the next cycle
-        txnMemRdCmd.valid := True
-        txnMemRdCmd.payload := txnOffs
-        txnMemRd.ready := True
+//      when(rReqDone(curTxnId) || rAbort(curTxnId)) {
+//        curTxnId := curTxnId + 1
+//      } otherwise {
+//        // read the txn hd cmd, will be ready in the next cycle
+//        txnMemRdCmd.valid := True
+//        txnMemRdCmd.payload := txnOffs
+//        txnMemRd.ready := True
+//      }
+      when(mskTxn2Start.orR) {
+        curTxnId := idxTxn2Start // reg
+        txnMemRdCmd.valid.set()
+        txnMemRdCmd.payload := idxTxn2Start << conf.wMaxTxnLen
+        txnMemRd.ready.set()
       }
 
       when(txnMemRd.fire){
@@ -172,7 +182,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
         txnMemRdCmd.valid := False
         rReqDone(curTxnId).set()
         reqLen.clearAll()
-        curTxnId := curTxnId + 1
+        // curTxnId := curTxnId + 1
         goto(CS_TXN)
       }
 
