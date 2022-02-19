@@ -88,7 +88,7 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
   def txnManCS(dut: TxnManCSTop): Unit = {
 
     // params
-    val txnLen = 16
+    val txnLen = 32
     val txnCnt = 128
     val txnMaxLen = sysConf.maxTxnLen-1
 

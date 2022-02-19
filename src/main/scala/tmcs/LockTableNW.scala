@@ -36,12 +36,6 @@ case class RamEntry(conf: SysConfig) extends Bundle{
   }
 }
 
-class LockTableIO(conf: SysConfig, isTIdTrunc: Boolean) extends Bundle{
-  val lkReq = slave Stream(LkReq(conf, isTIdTrunc))
-  val lkResp = master Stream(LkResp(conf, isTIdTrunc))
-}
-
-
 class LockTable(conf: SysConfig) extends Component {
 
   val io = new LockTableIO(conf, true)

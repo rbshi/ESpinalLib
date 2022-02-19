@@ -131,8 +131,24 @@ case class LkResp(conf: SysConfig, isTIdTrunc: Boolean) extends Bundle {
 
 }
 
+object LockTableIO {
+
+  def apply(conf: SysConfig, isTIdTrunc: Boolean): LockTableIO = {
+    val ret = new LockTableIO(conf, isTIdTrunc)
+    ret
+  }
+
+  def apply(conf: SysConfig): LockTableIO = {
+    val ret = new LockTableIO(conf, false)
+    ret
+  }
+}
 
 
+class LockTableIO(conf: SysConfig, isTIdTrunc: Boolean) extends Bundle{
+  val lkReq = slave Stream(LkReq(conf, isTIdTrunc))
+  val lkResp = master Stream(LkResp(conf, isTIdTrunc))
+}
 
 
 
