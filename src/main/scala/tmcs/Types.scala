@@ -65,8 +65,7 @@ trait SysConfig {
       s"""
          |Config
          |=======================
-         |wTId = $wTId
-         |
+         |wTId  = $wTId
          |""".stripMargin)
   }
 

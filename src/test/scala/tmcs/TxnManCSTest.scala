@@ -24,7 +24,7 @@ import util._
 class TxnManCSTop(sysConf: SysConfig) extends Component with SetDefaultIO {
 
   val txnMan = new TxnManCS(sysConf)
-  val ltCh = new LtCh(sysConf)
+  val ltMCh = new LtTop(sysConf)
 
   val io = new Bundle {
     val axi = master(Axi4(sysConf.axiConf))
@@ -40,10 +40,13 @@ class TxnManCSTop(sysConf: SysConfig) extends Component with SetDefaultIO {
 
   io.axi <> txnMan.io.axi
   io.cmdAxi <> txnMan.io.cmdAxi
-  txnMan.io.lkReqLoc <> ltCh.io.lkReq
-  txnMan.io.lkRespLoc <> ltCh.io.lkResp
+  txnMan.io.lkReqLoc <> ltMCh.io.lt(0).lkReq
+  txnMan.io.lkRespLoc <> ltMCh.io.lt(0).lkResp
+
   txnMan.io.nodeId := 0
   txnMan.io.txnManId := 0
+
+  ltMCh.io.nodeId := 0
 
   for (e <- List(txnMan.io.lkReqRmt, txnMan.io.wrRmt))
     setDefStream(e, true)
@@ -57,10 +60,10 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
   val sysConf = new SysConfig {
     override val nNode: Int = 1
-    override val nCh: Int = 1
+    override val nCh: Int = 4
     override val nLock: Int = 1024
     override val nTxnMan: Int = 1
-    override val nLtPart: Int = 4
+    override val nLtPart: Int = 1
   }
 
   def txnEntry2BigInt(nId: Int, cId: Int, tId: Int, lkType: Int, wLen: Int): BigInt = {
@@ -73,7 +76,8 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
       // txnHd
       txnMem += txnLen
       for (j <- 0 until txnLen)
-        txnMem += txnEntry2BigInt(0, 0, j+i, 1, 0) // len=64B << 0
+        // txnMem += txnEntry2BigInt(0, 0, j+i, 1, 0) // len=64B << 0
+        txnMem += txnEntry2BigInt(0, j%sysConf.nCh, j+i, 1, 0) // len=64B << 0
         // txnMem += txnEntry2BigInt(0, 0, txnLen*(i%sysConf.nTxnCS)/2+j, 1, 0) // conflict between neighboring txn
         // txnMem += txnEntry2BigInt(0, 0, txnLen*(i%sysConf.nTxnCS)+j, 1, 0)
         // txnMem += txnEntry2BigInt(0, 0, txnLen*i+j, 0, 0) // len=64B << 0
@@ -153,6 +157,7 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
   test("txnman_cs") {
     SimConfig.withWave.compile {
       val dut = new TxnManCSTop(sysConf)
+      sysConf.printConf
       dut.txnMan.io.simPublic()
       dut
     }.doSim("txnman_cs", 99)(txnManCS)
