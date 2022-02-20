@@ -8,7 +8,7 @@ import scala.language.postfixOps
 
 //TODO: for flow control at local node, should expose lk_batch or data_batch
 
-// local
+// local node
 class SendArbiter(cntTxnMan: Int, sysConf: SysConfig) extends Component {
   val io = new Bundle {
     val lkReqV = Vec(slave Stream LkReq(sysConf, false), cntTxnMan)
@@ -18,10 +18,9 @@ class SendArbiter(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 
   // #txnMan <= 8
   val lkReqJoin = Stream(Bits(512 bits))
-  if(cntTxnMan<=8){
-    lkReqJoin.arbitrationFrom(StreamJoin.vec(io.lkReqV))
-    lkReqJoin.payload := io.lkReqV.asBits.resized
-  } else {SpinalError("Only support #txnMan <= 8 now!")}
+  require(cntTxnMan<=8, "Only support #txnMan <= 8 now!")
+  lkReqJoin.arbitrationFrom(StreamJoin.vec(io.lkReqV))
+  lkReqJoin.payload := io.lkReqV.asBits.resized
 
   val rWrLen = Vec(Reg(UInt(3 bits)), cntTxnMan) // maxLen = 64B << 7 = 8192 B
   val cntBeat = Reg(UInt(8 bits)).init(0)
@@ -148,7 +147,7 @@ class RecvDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 
 }
 
-// remote
+// remote node
 class ReqDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 
   val io = new Bundle {
@@ -195,7 +194,7 @@ class ReqDispatcher(cntTxnMan: Int, sysConf: SysConfig) extends Component {
           switch(rMskWr.orR) {
             is(True)(goto(WRDATA))
             is(False)(goto(LKREQ))
-          }          
+          }
         }
       }
     }

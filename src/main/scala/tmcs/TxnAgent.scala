@@ -1,0 +1,86 @@
+package tmcs
+
+import spinal.core.{UInt, _}
+import spinal.core.Mem
+import spinal.lib._
+import spinal.lib.fsm._
+import spinal.lib.bus.amba4.axi._
+import spinal.lib.fsm.StateMachine
+import util._
+
+
+case class TxnAgentIO(conf: SysConfig) extends Bundle {
+  // from net arb
+  val lkReq = slave Stream LkReq(conf, isTIdTrunc = false)
+  val wrData = slave Stream Bits(512 bits)
+  val lkResp = master Stream LkResp(conf, isTIdTrunc = false)
+  val rdData = master Stream Bits(512 bits)
+
+  // local data axi
+  val axi = master(Axi4(conf.axiConf))
+
+  // lt
+  val ltReq = master Stream LkReq(conf, isTIdTrunc = false)
+  val ltResp = slave Stream LkResp(conf, isTIdTrunc = false)
+}
+
+
+class TxnAgent(conf: SysConfig) extends Component {
+
+  val io = TxnAgentIO(conf)
+  // NOTE: since packaged lkReq net lane may contain multi lkReq, size is 512/64(lk size)
+  val lkReqQ = io.lkReq.queue(8)
+
+  // stream FIFO to tmp store the wrRlse req (later issue after get axi.b)
+  val lkReqRlseWrFifo = StreamFifo(LkReq(conf, false), 8)
+
+  // demux the lkReqQ (if wrRlse, to Fifo, else to ltReq)
+  val isWrReqRlse = lkReqQ.lkRelease && lkReqQ.lkType
+  val lkReqQFork, lkReqBpss = cloneOf(lkReqQ)
+
+  switch(isWrReqRlse) {
+    is(True) (lkReqQFork << lkReqQ) // fork to both lkReqRlseWrFifo and axi.aw
+    is(False) (lkReqBpss << lkReqQ)
+  }
+
+  // arb the lkReq from lkReqBpss / lkReqRlseWrFifo
+  io.ltReq << StreamArbiterFactory.roundRobin.onArgs(lkReqBpss, lkReqRlseWrFifo.io.pop.continueWhen(io.axi.b.fire))
+
+  val (reqFork1, reqFork2) = StreamFork2(lkReqQFork) // asynchronous
+  lkReqRlseWrFifo.io.push << reqFork1
+  io.axi.aw.arbitrationFrom(reqFork2)
+
+  // default axi.aw, axi.w
+  io.axi.aw.addr := (((reqFork2.tId << reqFork2.wLen) << 6) + (reqFork2.cId << conf.wChSize)).resized
+  io.axi.aw.id := 0
+  io.axi.aw.len := (U(1)<<reqFork2.wLen) -1
+  io.axi.aw.size := log2Up(512/8)
+  io.axi.aw.setBurstINCR()
+
+  val nBeat = RegNextWhen((U(1)<<reqFork2.wLen)-1, reqFork2.fire)
+  val axiWrVld = RegNextWhen(True, reqFork2.fire)
+  axiWrVld.clearWhen(io.axi.w.last && io.axi.w.fire)
+
+  io.axi.w.data := io.wrData.payload
+  io.axi.w.last := (nBeat === 0)
+  when(axiWrVld) (io.axi.w.arbitrationFrom(io.wrData))
+
+  // wr resp
+  io.axi.b.ready.set()
+
+  // resp
+  val isRdRespGrant = ~io.ltResp.lkRelease && ~io.ltResp.lkType && (io.ltResp.respType === LockRespType.grant)
+
+  io.axi.ar.addr := (((io.ltResp.tId << io.ltResp.wLen) << 6) + (io.ltResp.cId << conf.wChSize)).resized
+  io.axi.ar.id := 0 // dont care
+  io.axi.ar.len := (U(1)<<io.ltResp.wLen) -1
+  io.axi.ar.size := log2Up(512/8)
+  io.axi.ar.setBurstINCR()
+  io.axi.ar.valid := isRdRespGrant
+
+  io.lkResp << io.ltResp.continueWhen(~isRdRespGrant || io.axi.ar.fire)
+
+  // rdData: directly bpss the io.axi.r
+  io.rdData.translateFrom(io.axi.r)((a, b) => a.assignFromBits(b.data))
+
+}

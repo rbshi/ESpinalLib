@@ -395,7 +395,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
 
     // TODO: data path
     // fixme: tId -> addr translation logic
-    io.axi.aw.addr := ((cmtTxn.tId << cmtTxn.wLen) + (cmtTxn.cId << conf.wChSize)).resized
+    io.axi.aw.addr := (((cmtTxn.tId << cmtTxn.wLen) << 6) + (cmtTxn.cId << conf.wChSize)).resized
     io.axi.aw.id := curTxnId
     io.axi.aw.len := (U(1)<<cmtTxn.wLen) -1
     io.axi.aw.size := log2Up(512/8)
