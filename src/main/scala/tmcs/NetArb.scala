@@ -27,7 +27,7 @@ class SendArbiter(cntTxnMan: Int, sysConf: SysConfig) extends Component {
 
   val mskWr = Bits(cntTxnMan bits)
   for (i <- mskWr.bitsRange){
-    mskWr(i) := io.lkReqV(i).lkRelease && io.lkReqV(i).lkType
+    mskWr(i) := io.lkReqV(i).lkRelease && io.lkReqV(i).lkType && ~io.lkReqV(i).txnAbt // NOTE: if txn not abt -> wrData
   }
 
   val fsm = new StateMachine {

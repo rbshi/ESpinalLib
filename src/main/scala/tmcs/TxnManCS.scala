@@ -15,8 +15,8 @@ case class TxnManCSIO(conf: SysConfig) extends Bundle {
   val lkRespLoc, lkRespRmt = slave Stream LkResp(conf, isTIdTrunc = false)
 
   // rd/wr data from/to remote
-  val rdRmt = slave Stream UInt(512 bits)
-  val wrRmt = master Stream UInt(512 bits)
+  val rdRmt = slave Stream Bits(512 bits)
+  val wrRmt = master Stream Bits(512 bits)
 
   // local data axi
   val axi = master(Axi4(conf.axiConf))
@@ -70,8 +70,8 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
 
   // lkGet and lkRlse are be arbitrated and sent to io
   val lkReqGetLoc, lkReqRlseLoc, lkReqGetRmt, lkReqRlseRmt = Stream(LkReq(conf, isTIdTrunc = false))
-  io.lkReqLoc <> StreamArbiterFactory.roundRobin.onArgs(lkReqGetLoc, lkReqRlseLoc)
-  io.lkReqRmt <> StreamArbiterFactory.roundRobin.onArgs(lkReqGetRmt, lkReqRlseRmt)
+  io.lkReqLoc <> StreamArbiterFactory.roundRobin.noLock.onArgs(lkReqGetLoc, lkReqRlseLoc)
+  io.lkReqRmt <> StreamArbiterFactory.roundRobin.noLock.onArgs(lkReqGetRmt, lkReqRlseRmt)
 
   for (e <- Seq(lkReqGetLoc, lkReqRlseLoc, lkReqGetRmt, lkReqRlseRmt))
     e.valid := False
@@ -87,7 +87,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
 
   // context registers
   // NOTE: separate local / remote; some reg is redundant (may be simplified)
-  val cntLkReqLoc, cntLkReqRmt, cntLkRespLoc, cntLkRespRmt, cntLkHoldLoc, cntLkHoldRmt, cntLkReqWrLoc, cntLkReqWrRmt, cntLkHoldWrLoc, cntLkHoldWrRmt, cntCmtReqLoc, cntCmtReqRmt, cntCmtRespLoc, cntCmtRespRmt, cntRlseReqLoc, cntRlseReqRmt, cntRlseReqWrLoc, cntRlseReqWrRmt, cntRlseRespLoc, cntRlseRespRmt = Vec(Reg(UInt(conf.wMaxTxnLen bits)), conf.nTxnCS)
+  val cntLkReqLoc, cntLkReqRmt, cntLkRespLoc, cntLkRespRmt, cntLkHoldLoc, cntLkHoldRmt, cntLkReqWrLoc, cntLkReqWrRmt, cntLkHoldWrLoc, cntLkHoldWrRmt, cntCmtReqLoc, cntCmtReqRmt, cntCmtRespLoc, cntCmtRespRmt, cntRlseReqLoc, cntRlseReqRmt, cntRlseReqWrLoc, cntRlseReqWrRmt, cntRlseRespLoc, cntRlseRespRmt = Vec(Reg(UInt(conf.wMaxTxnLen bits)).init(0), conf.nTxnCS)
   // status register
   val rAbort = Vec(RegInit(False), conf.nTxnCS)
   val rReqDone, rRlseDone = Vec(RegInit(True), conf.nTxnCS) // init to True, to trigger the first txnMem load and issue
@@ -111,7 +111,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
     val txnOffs = curTxnId << conf.wMaxTxnLen
 
     for (e <- Seq(lkReqGetLoc, lkReqGetRmt))
-      e.payload := txnMemRd.toLkReq(io.txnManId, curTxnId, False, reqLen)
+      e.payload := txnMemRd.toLkReq(io.nodeId, io.txnManId, curTxnId, False, reqLen)
 
     val mskTxn2Start = ~rReqDone.asBits & ~rAbort.asBits // msk to indicate which txn to start
     val idxTxn2Start = OHToUInt(OHMasking.first(mskTxn2Start))
@@ -177,7 +177,8 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
         is(False)(lkReqGetRmt.valid := txnMemRd.valid)
       }
 
-      //NOTE: lkReq of next Txn OR if abort, stop issue the req
+      // NOTE: lkReq of next Txn OR if abort, stop issue the req
+      // NOTE: the state jump with rAbort here may cause vld without fire -> the subsequent arb should be `nolock`
       when((lkReqFire && (reqLen===(txnLen-1))) || rAbort(curTxnId)){
         txnMemRdCmd.valid := False
         rReqDone(curTxnId).set()
@@ -210,7 +211,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
     // Since rReqDone will have two cycles latency (io.lkResp (c0) -> R -> rAbort (c1) -> R -> rReqDone (c2)), the following logic occurs in c1, so use ~(xxx) as extra statements to avoid lkReq happens in c2.
     val firstReqAbt = rAbort(rCurTxnId) && ~(io.lkReqLoc.fire && io.lkReqLoc.txnId===rCurTxnId) && ~(io.lkReqRmt.fire && io.lkReqRmt.txnId===rCurTxnId)
 
-    val rFire = RegNext(io.lkRespLoc.fire)
+    val rFire = RegNext(io.lkRespLoc.fire, False)
 
     // FIXME: may conflict with LkRespRmt
     // release after get all lkResp and rReqDone
@@ -289,7 +290,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
     // io.lkResp -> R -> rAbort -> R -> rReqDone
     val firstReqAbt = rAbort(rCurTxnId) && ~(io.lkReqLoc.fire && io.lkReqLoc.txnId===rCurTxnId) && ~(io.lkReqRmt.fire && io.lkReqRmt.txnId===rCurTxnId)
 
-    val rFire = RegNext(io.lkRespRmt.fire)
+    val rFire = RegNext(io.lkRespRmt.fire, False)
 
     // release after get all lkResp and rReqDone
     when(rFire && getAllRlse && getAllLkResp && (rReqDone(rCurTxnId) || firstReqAbt)){
@@ -459,7 +460,8 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
       }
     }
 
-    lkReqRlseLoc.payload := lkItem.toLkReq(True, cntRlseReqLoc(curTxnId))
+    lkReqRlseLoc.payload := lkItem.toLkRlseReq(rAbort(curTxnId), cntRlseReqLoc(curTxnId))
+
     LK_RLSE.whenIsActive {
       lkReqRlseLoc.valid := True
       when(lkReqRlseLoc.fire){
@@ -503,17 +505,22 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
       }
     }
 
-    lkReqRlseRmt.payload := lkItem.toLkReq(True, cntRlseReqRmt(curTxnId))
+    lkReqRlseRmt.payload := lkItem.toLkRlseReq(rAbort(curTxnId), cntRlseReqRmt(curTxnId))
+
     RMT_LK_RLSE.whenIsActive {
       lkReqRlseRmt.valid := True
       when(lkReqRlseRmt.fire){
-        cntRlseReqRmt(curTxnId) := cntRlseReqRmt(curTxnId) + 1
+        // NOTE: for rmt case, cntRlseReq++ after RMT_WR
+        // cntRlseReqRmt(curTxnId) := cntRlseReqRmt(curTxnId) + 1
 
         // when wr lock & ~rAbort
         when(lkItem.lkType && ~rAbort(curTxnId)) {
-          cntRlseReqWrRmt(curTxnId) := cntRlseReqWrRmt(curTxnId) + 1
+          cntRlseReqWrRmt(curTxnId) := cntRlseReqWrRmt(curTxnId) + 1 // no use
           goto(RMT_WR)
-        } otherwise(goto(CS_TXN))
+        } otherwise {
+          cntRlseReqRmt(curTxnId) := cntRlseReqRmt(curTxnId) + 1
+          goto(CS_TXN)
+        }
       }
     }
 
@@ -524,6 +531,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
       when(io.wrRmt.fire) {
         nBeat := nBeat + 1
         when(nBeat === (U(1)<<lkItem.wLen) -1) {
+          cntRlseReqRmt(curTxnId) := cntRlseReqRmt(curTxnId) + 1
           nBeat.clearAll()
           goto(CS_TXN)
         }
@@ -554,7 +562,7 @@ class TxnManCS(conf: SysConfig) extends Component with RenameIO {
 
 
     val rCmdAxiData = RegNextWhen(io.cmdAxi.r.data, io.cmdAxi.r.fire)
-    val rCmdAxiFire = RegNext(io.cmdAxi.r.fire)
+    val rCmdAxiFire = RegNext(io.cmdAxi.r.fire, False)
     // 512 / 64
     val cmdAxiDataSlice = rCmdAxiData.subdivideIn(8 slices)
 

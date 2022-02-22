@@ -17,7 +17,6 @@ import scala.collection.mutable.ArrayBuffer
 import scala.math.BigInt
 import util._
 
-
 /*
 * connect the txnManCS to a lt
 * */
@@ -55,78 +54,92 @@ class TxnManCSTop(sysConf: SysConfig) extends Component with SetDefaultIO {
 
 }
 
+class TwoNodeDirect(sysConf: SysConfig) extends Component with SetDefaultIO {
+
+  val n0 = new Area {
+
+    val io = new Bundle {
+      val axi = master(Axi4(sysConf.axiConf))
+      val cmdAxi = master(Axi4(sysConf.axiConf))
+      val start = in Bool()
+      val txnNumTotal = in UInt (32 bits)
+      val cmdAddrOffs = in UInt (32 bits) //NOTE: unit size 64B
+    }
+    val txnMan = new TxnManCS(sysConf)
+    val ltMCh = new LtTop(sysConf)
+
+    txnMan.io.axi <> io.axi
+    txnMan.io.cmdAxi <> io.cmdAxi
+    txnMan.io.start <> io.start
+    txnMan.io.txnNumTotal <> io.txnNumTotal
+    txnMan.io.cmdAddrOffs <> io.cmdAddrOffs
+
+    txnMan.io.txnManId := 0
+    txnMan.io.nodeId := 0
+    txnMan.io.lkReqLoc <> ltMCh.io.lt(0).lkReq
+    txnMan.io.lkRespLoc <> ltMCh.io.lt(0).lkResp
+
+    ltMCh.io.nodeId := 0
+
+    setDefStream(ltMCh.io.lt(1).lkReq, false)
+    setDefStream(ltMCh.io.lt(1).lkResp, true)
+
+  }
+
+
+  val n1 = new Area {
+
+    val io = new Bundle {
+      val axi = master(Axi4(sysConf.axiConf))
+    }
+
+    val txnAgt = new TxnAgent(sysConf)
+    val ltMCh = new LtTop(sysConf)
+
+    txnAgt.io.axi <> io.axi
+    txnAgt.io.ltReq <> ltMCh.io.lt(1).lkReq
+    txnAgt.io.ltResp <> ltMCh.io.lt(1).lkResp
+    ltMCh.io.nodeId := 1
+
+    setDefStream(ltMCh.io.lt(0).lkReq, false)
+    setDefStream(ltMCh.io.lt(0).lkResp, true)
+
+  }
+
+  // directly connect the txnMan <> txnAgent
+  n0.txnMan.io.lkReqRmt <> n1.txnAgt.io.lkReq
+  n0.txnMan.io.lkRespRmt <> n1.txnAgt.io.lkResp
+  n0.txnMan.io.wrRmt <> n1.txnAgt.io.wrData
+  n0.txnMan.io.rdRmt <> n1.txnAgt.io.rdData
+}
 
 class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
   val sysConf = new SysConfig {
-    override val nNode: Int = 1
+    override val nNode: Int = 2
     override val nCh: Int = 4
     override val nLock: Int = 1024
     override val nTxnMan: Int = 1
     override val nLtPart: Int = 1
   }
-
-  def txnEntry2BigInt(nId: Int, cId: Int, tId: Int, lkType: Int, wLen: Int): BigInt = {
-    nId + (cId << (sysConf.wNId)) + (tId << (sysConf.wNId+sysConf.wCId)) + (lkType << (sysConf.wNId+sysConf.wCId+sysConf.wTId)) + (wLen << (sysConf.wNId+sysConf.wCId+sysConf.wTId+2))
-  }
-
-  def initTxnMem(sysConf: SysConfig, txnCnt: Int, txnLen: Int, txnMaxLen: Int) = {
-    var txnMem = mutable.Queue.empty[BigInt]
-    for (i <- 0 until txnCnt) {
-      // txnHd
-      txnMem += txnLen
-      for (j <- 0 until txnLen)
-        // txnMem += txnEntry2BigInt(0, 0, j+i, 1, 0) // len=64B << 0
-        txnMem += txnEntry2BigInt(0, j%sysConf.nCh, j+i, 1, 0) // len=64B << 0
-        // txnMem += txnEntry2BigInt(0, 0, txnLen*(i%sysConf.nTxnCS)/2+j, 1, 0) // conflict between neighboring txn
-        // txnMem += txnEntry2BigInt(0, 0, txnLen*(i%sysConf.nTxnCS)+j, 1, 0)
-        // txnMem += txnEntry2BigInt(0, 0, txnLen*i+j, 0, 0) // len=64B << 0
-      for (j <- 0 until (txnMaxLen-txnLen))
-        txnMem += 0
-    }
-    txnMem
-  }
-
-
+  //
+  SimConversions.sysConf = sysConf
+  SimInit.sysConf = sysConf
 
   def txnManCS(dut: TxnManCSTop): Unit = {
-
     // params
-    val txnLen = 32
-    val txnCnt = 128
+    val txnLen = 8
+    val txnCnt = 16
     val txnMaxLen = sysConf.maxTxnLen-1
 
     dut.clockDomain.forkStimulus(period = 10)
 
     // data memory
-    val axi_mem = AxiMemorySim(dut.io.axi, dut.clockDomain, AxiMemorySimConfig(
-      maxOutstandingReads = 128,
-      maxOutstandingWrites = 128,
-      readResponseDelay = 3,
-      writeResponseDelay = 2
-    ))
-    axi_mem.start()
-    val mem_init = Array.fill[Byte](1<<20)(0.toByte)
-    axi_mem.memory.writeArray(0, mem_init)
+    val axiMem = SysSim.instAxiMemSim(dut.io.axi, dut.clockDomain, None)
 
     // cmd memory
-    val cmd_axi_mem = AxiMemorySim(dut.io.cmdAxi, dut.clockDomain, AxiMemorySimConfig(
-      maxOutstandingReads = 128,
-      maxOutstandingWrites = 128,
-      readResponseDelay = 3,
-      writeResponseDelay = 3
-    ))
-    cmd_axi_mem.start()
-
-    val txnMem = initTxnMem(sysConf, txnCnt, txnLen, txnMaxLen)
-    var cmd_axi_mem_init = new Array[Byte](txnCnt*(txnMaxLen+1)*8)
-    for (i <- 0 until txnCnt*(txnMaxLen+1)) {
-      // pad zero byte to MSBs
-      val tmp = txnMem(i).toByteArray.reverse.padTo(8, 0.toByte)
-      Array.copy(tmp, 0, cmd_axi_mem_init, i*8, 8)
-    }
-    // init to cmd memory
-    cmd_axi_mem.memory.writeArray(0, cmd_axi_mem_init)
+    val txnCtx = SimInit.txnEntrySimInt(txnCnt, txnLen, txnMaxLen).toArray
+    val cmdAxiMem = SysSim.instAxiMemSim(dut.io.cmdAxi, dut.clockDomain, Some(txnCtx))
 
     dut.io.start #= false
     // wait the fifo (empty_ptr) to reset
@@ -141,11 +154,10 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
     dut.clockDomain.waitSampling()
     dut.io.start #= false
 
-
-    // wait for a while
-//    dut.clockDomain.waitSampling(64000)
+    // dut.clockDomain.waitSampling(64000)
 
     dut.clockDomain.waitSamplingWhere(dut.txnMan.io.done.toBoolean)
+
     println(s"[txnMan] cntTxnCmt: ${dut.txnMan.io.cntTxnCmt.toBigInt}")
     println(s"[txnMan] cntTxnAbt: ${dut.txnMan.io.cntTxnAbt.toBigInt}")
     println(s"[txnMan] cntTxnLd: ${dut.txnMan.io.cntTxnLd.toBigInt}")
@@ -153,14 +165,61 @@ class TxnManCSTest extends AnyFunSuite with SimFunSuite {
 
   }
 
+  def twoNodeDirect(dut: TwoNodeDirect): Unit = {
+    // params
+    val txnLen = 32
+    val txnCnt = 128
+    val txnMaxLen = sysConf.maxTxnLen-1
 
-  test("txnman_cs") {
-    SimConfig.withWave.compile {
-      val dut = new TxnManCSTop(sysConf)
-      sysConf.printConf
-      dut.txnMan.io.simPublic()
-      dut
-    }.doSim("txnman_cs", 99)(txnManCS)
+    dut.clockDomain.forkStimulus(period = 10)
+
+    // cmd memory
+    val txnCtx = SimInit.txnEntrySimInt(txnCnt, txnLen, txnMaxLen).toArray
+    val cmdAxiMem = SysSim.instAxiMemSim(dut.n0.io.cmdAxi, dut.clockDomain, Some(txnCtx))
+
+    // data memory
+    val n0Axi = SysSim.instAxiMemSim(dut.n0.io.axi, dut.clockDomain, None)
+    val n1Axi = SysSim.instAxiMemSim(dut.n1.io.axi, dut.clockDomain, None)
+
+    dut.n0.io.start #= false
+    // wait the fifo (empty_ptr) to reset
+    dut.clockDomain.waitSampling(2000)
+
+    // config
+    dut.n0.io.cmdAddrOffs #= 0
+    dut.n0.io.txnNumTotal #= txnCnt
+
+    // start
+    dut.n0.io.start #= true
+    dut.clockDomain.waitSampling()
+    dut.n0.io.start #= false
+
+    // dut.clockDomain.waitSampling(64000)
+
+    dut.clockDomain.waitSamplingWhere(dut.n0.txnMan.io.done.toBoolean)
+
+    println(s"[txnMan] cntTxnCmt: ${dut.n0.txnMan.io.cntTxnCmt.toBigInt}")
+    println(s"[txnMan] cntTxnAbt: ${dut.n0.txnMan.io.cntTxnAbt.toBigInt}")
+    println(s"[txnMan] cntTxnLd: ${dut.n0.txnMan.io.cntTxnLd.toBigInt}")
+    println(s"[txnMan] cntClk: ${dut.n0.txnMan.io.cntClk.toBigInt}")
+
   }
+
+//  test("txnman_cs") {
+//    SimConfig.withWave.compile {
+//      val dut = new TxnManCSTop(sysConf)
+//      dut.txnMan.io.simPublic()
+//      dut
+//    }.doSim("txnman_cs", 99)(txnManCS)
+//  }
+
+  test("twonode_direct_conn") {
+    SimConfig.withWave.compile {
+      val dut = new TwoNodeDirect(sysConf)
+      dut.n0.txnMan.io.simPublic()
+      dut
+    }.doSim("twonode_direct_conn", 99)(twoNodeDirect)
+  }
+
 
 }

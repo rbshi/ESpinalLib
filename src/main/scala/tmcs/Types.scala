@@ -78,15 +78,17 @@ case class TxnEntry(conf: SysConfig) extends Bundle {
   val lkAttr = Bits(conf.wLkAttr bits)
   val wLen = UInt(conf.wTupLenPow bits) // len(tuple)=2^wLen; maxLen = 64B << 7 = 8192 B
 
-  def toLkReq(txnManId: UInt, curTxnId: UInt, release: Bool, lkIdx: UInt): LkReq = {
+  def toLkReq(srcNodeId: UInt, txnManId: UInt, curTxnId: UInt, release: Bool, lkIdx: UInt): LkReq = {
     val lkReq = LkReq(this.conf, false) // process in txnMan, so false
     lkReq.assignSomeByName(this)
+    lkReq.snId := srcNodeId
     lkReq.txnManId := txnManId
     lkReq.txnId := curTxnId
     lkReq.lkType := this.lkAttr(0)
     lkReq.lkUpgrade := this.lkAttr(1)
     lkReq.lkRelease := release
     lkReq.lkIdx := lkIdx
+    lkReq.txnAbt := False
     lkReq
   }
 }
@@ -95,11 +97,13 @@ case class LkReq(conf: SysConfig, isTIdTrunc: Boolean) extends Bundle {
   val nId = UInt(conf.wNId bits)
   val cId = UInt(conf.wCId bits)
   val tId = if(isTIdTrunc) UInt(conf.wTId - conf.wLtPart bits) else UInt(conf.wTId bits)
+  val snId = UInt(conf.wNId bits) // src node (who issue the txn) Id
   val txnManId = UInt(conf.wTxnManId bits)
   val txnId = UInt(conf.wTxnId bits)
   val lkType = Bool()
   val lkUpgrade = Bool()
   val lkRelease = Bool()
+  val txnAbt = Bool() // when req wr rlse, if txnAbt, then no data to commit
   val lkIdx = UInt(conf.wLkIdx bits)
   val wLen = UInt(conf.wTupLenPow bits)
 }
@@ -109,22 +113,25 @@ case class LkResp(conf: SysConfig, isTIdTrunc: Boolean) extends Bundle {
   val nId = UInt(conf.wNId bits)
   val cId = UInt(conf.wCId bits)
   val tId = if(isTIdTrunc) UInt(conf.wTId - conf.wLtPart bits) else UInt(conf.wTId bits)
+  val snId = UInt(conf.wNId bits) // src node (who issue the txn) Id
   val txnManId = UInt(conf.wTxnManId bits)
   val txnId = UInt(conf.wTxnId bits)
   val lkType = Bool()
   val lkUpgrade = Bool()
   val lkRelease = Bool()
+  val txnAbt = Bool()
   val lkIdx = UInt(conf.wLkIdx bits)
   val wLen = UInt(conf.wTupLenPow bits)
   // TODO: how to reuse the above W/O bundle hierarchy
 
   val respType = LockRespType()
 
-  def toLkReq(release: Bool, lkIdx: UInt): LkReq = {
+  def toLkRlseReq(txnAbt: Bool, lkIdx: UInt): LkReq = {
     val lkReq = LkReq(this.conf, false) // process in txnMan, so false
     lkReq.assignSomeByName(this)
-    lkReq.lkRelease.allowOverride := release
+    lkReq.lkRelease.allowOverride := True
     lkReq.lkIdx.allowOverride := lkIdx
+    lkReq.txnAbt.allowOverride := txnAbt
     lkReq
   }
 

@@ -48,13 +48,13 @@ class LtTop(sysConf: SysConfig) extends Component {
   // demux the lkResp to nTxnMan txnMan and (nNode - 1) txnAgent
   def fLkRespDemux(lkResp: LkResp): UInt = {
     val demuxSel = UInt(log2Up(sysConf.nTxnMan + sysConf.nNode - 1) bits)
-    when(io.nodeId < lkResp.nId) {
-      demuxSel := (sysConf.nTxnMan + lkResp.nId - 1).resized
+    when(io.nodeId < lkResp.snId) {
+      demuxSel := (sysConf.nTxnMan + lkResp.snId - 1).resized
     } otherwise {
-      when(io.nodeId > lkResp.nId) {
-        demuxSel := (sysConf.nTxnMan + lkResp.nId).resized
+      when(io.nodeId > lkResp.snId) {
+        demuxSel := (sysConf.nTxnMan + lkResp.snId).resized
       } otherwise {
-        demuxSel := lkResp.txnManId
+        demuxSel := lkResp.txnManId.resized
       }
     }
     demuxSel

@@ -35,16 +35,21 @@ class TxnAgent(conf: SysConfig) extends Component {
   val lkReqRlseWrFifo = StreamFifo(LkReq(conf, false), 8)
 
   // demux the lkReqQ (if wrRlse, to Fifo, else to ltReq)
-  val isWrReqRlse = lkReqQ.lkRelease && lkReqQ.lkType
+  val isWrReqRlse = lkReqQ.lkRelease && lkReqQ.lkType && ~lkReqQ.txnAbt // NOTE: not abt
   val lkReqQFork, lkReqBpss = cloneOf(lkReqQ)
 
-  switch(isWrReqRlse) {
-    is(True) (lkReqQFork << lkReqQ) // fork to both lkReqRlseWrFifo and axi.aw
-    is(False) (lkReqBpss << lkReqQ)
-  }
+  val lkReqQDmx = StreamDemux(lkReqQ, isWrReqRlse.asUInt, 2)
+  lkReqQDmx(0) >> lkReqBpss
+  lkReqQDmx(1) >> lkReqQFork // fork to both lkReqRlseWrFifo and axi.aw
 
   // arb the lkReq from lkReqBpss / lkReqRlseWrFifo
-  io.ltReq << StreamArbiterFactory.roundRobin.onArgs(lkReqBpss, lkReqRlseWrFifo.io.pop.continueWhen(io.axi.b.fire))
+  // rbFire to indicate wr back finished
+  val rbFire = RegInit(False)
+  when(io.axi.b.fire) (rbFire.set()) otherwise {
+    when(lkReqRlseWrFifo.io.pop.fire) (rbFire.clear())
+  }
+  
+  io.ltReq << StreamArbiterFactory.roundRobin.onArgs(lkReqBpss, lkReqRlseWrFifo.io.pop)
 
   val (reqFork1, reqFork2) = StreamFork2(lkReqQFork) // asynchronous
   lkReqRlseWrFifo.io.push << reqFork1
@@ -57,13 +62,20 @@ class TxnAgent(conf: SysConfig) extends Component {
   io.axi.aw.size := log2Up(512/8)
   io.axi.aw.setBurstINCR()
 
+  if(conf.axiConf.useStrb){
+    io.axi.w.payload.strb.setAll()
+  }
+
   val nBeat = RegNextWhen((U(1)<<reqFork2.wLen)-1, reqFork2.fire)
-  val axiWrVld = RegNextWhen(True, reqFork2.fire)
+  val axiWrVld = RegNextWhen(True, reqFork2.fire, False)
   axiWrVld.clearWhen(io.axi.w.last && io.axi.w.fire)
 
   io.axi.w.data := io.wrData.payload
   io.axi.w.last := (nBeat === 0)
-  when(axiWrVld) (io.axi.w.arbitrationFrom(io.wrData))
+  when(axiWrVld) {io.axi.w.arbitrationFrom(io.wrData)} otherwise {
+    io.wrData.ready.clear()
+    io.axi.w.valid.clear()
+  }
 
   // wr resp
   io.axi.b.ready.set()
